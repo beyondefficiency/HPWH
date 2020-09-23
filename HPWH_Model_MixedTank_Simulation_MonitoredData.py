@@ -2,23 +2,6 @@
 """
 Created on Mon Apr 01 12:53:33 2019
 
-This script represents a model of GTI's gas HPWH. It is currently capable of being run using draw profile information from
-either CBECC-Res ot GTI's field monitoring project. It also currently has two modes, one where it simply predicts the performance
-of a device over a given draw profile, and a second where it compares the performance of the device to that which is observed
-in the measured data.
-
-The model is broken into several different setions. The sections are as follows:
-Import Statements: Imports various python packages as necessary
-Inputs: This is the most important section for the user. It includes inputs that a) Inform the model of the input data,
--(Either CBECC-Res draw profile or GTI field data), b) Determine whether it is running a simulation or comparing to measured
--data (Comparing to measured data should probably only be used for model validation purposes), and c) Define the parameters of
--the gas HPWH and the operating conditions
-Constant Declarations and Calculations: This section contains constants such as the specific heat of water, as well as
--calculations needed for the project (For instance, conversions from SI units to IP)
-Modeling: This section performs the calculations necessary to model the gas HPWH and, if instructed to in Inputs, compare the
--results to the measured data. This is the guts of the model, and the most important portion for users who with to truly
--understand how it functions or modify it
-
 @author: pgrant
 """
 
@@ -46,7 +29,7 @@ Temperature_Ambient = 20 #deg C, temperature of the ambient air, placeholder for
 Volume_Tank = 290 #L, volume of water held in the storage tank, based on 72 gal rating at https://www.energystar.gov/productfinder/product/certified-water-heaters/details/2317252
 Coefficient_JacketLoss = 2.8 #W/K, Adjusted to match monitored data
 Power_Backup = 3800 #W, electricity consumption of the backup resistance elements
-Threshold_Activation_Backup = 35 #deg C, backup element operates when tank temperature is below this threshold. Note that this operate at the same time as the heat pump (100 F is the default)
+Threshold_Activation_Backup = 15 #deg C, backup element operates when tank temperature is this far below the set temperature. This parameter operates as a deadband. Note that this operate at the same time as the heat pump (100 F is the default)
 Threshold_Deactivation_Backup = Temperature_Tank_Set #Deg C, sets the temperature when the backup element disengages after it has been engaged (115 F is the default)
 HeatAddition_HeatPump = 1230.9 #W, heat consumed by the heat pump
 ElectricityConsumption_Active = 158.5 #W, electricity consumed by the fan when the heat pump is running
@@ -61,10 +44,12 @@ Temperature_MixingValve_Set = 48.9 #deg C, set temperature of the mixing valve
 
 #This first variable provides the path to the data set itself. This means you should fill in the path with the specific location 
 #of your data file. Note that this works best if the file is on your hard drive, not a shared network drive
-Path_DrawProfile = os.path.dirname(__file__) + os.sep + 'Data' + os.sep + 'MonitoredData' + os.sep + '2020-07-22_3E82.csv'
-Filename_Start = -19
+Path_DrawProfile = r'C:\Users\Peter Grant\Dropbox (Beyond Efficiency)\Peter\Python Scripts\HPWH_Python\Data\MonitoredData\3CFA_LoadShifting_Aug2020' + os.sep +  'Aug20_To_Aug26.csv'
+Filename_Start = -18
 Filename_End = -4
 Filename = Path_DrawProfile[Filename_Start:Filename_End]
+
+Variable_Set_Temperature = 1 #Set this =1 if using a varying set temperature for the water heater, or =0 if using a static set temperature for the water heater
 
 #Set this = 1 if you want to compare model predictions to measured data results. This is useful for model validation and error
 #checking. If you want to only input the draw profile and see what the data predicts, set this = 0. Note that =1 mode causes the
@@ -124,7 +109,7 @@ Parameters = [Coefficient_JacketLoss, #0
 
 #Creates a 1 dimensional regression stating the COP of the gas heat pump as a function of the temperature of water in the tank
 Coefficients_COP = [Coefficient_2ndOrder_COP, Coefficient_1stOrder_COP, Constant_COP] #combines the coefficient and the constant into an array
-Regression_COP = np.poly1d(Coefficients_COP)
+Regression_COP = np.poly1d(Coefficients_COP) #Creates a 1-d linear regression stating the COP of the heat pump as a function of the temperature of water in the tank
 
 #This section of the code creates a data frame that can be used to represent the simulation model
 #The first step is putting the draw profile data into the right format (E.g. If it's CBECC data, we need to convert from event-based to timestep-based)
@@ -159,14 +144,17 @@ Model['Water_FlowRate_LPerMin'] = Model['Water_FlowRate_gpm'] * Liters_In_Gallon
 Model['Water_FlowTotal_L'] = Model['Water_FlowTotal_gal'] * Liters_In_Gallon
 Model['Water_FlowTemp_C'] = (Model['Water_FlowTemp_F']-32) * 1/K_To_F_MagnitudeOnly
 Model['Water_RemoteTemp_C'] = (Model['Water_RemoteTemp_F']-32) * 1/K_To_F_MagnitudeOnly
-Model['T_Setpoint_C'] = (Model['T_Setpoint_F']-32) * 1/K_To_F_MagnitudeOnly
+Model['T_Setpoint_C'] = (Model['T_Setpoint_F']-32) * 1/K_To_F_MagnitudeOnly #Create a column in the model representing the user-supplied, possibly varying, set temperature in deg C. If Variable_Set_Temperature == 1 this will be the set temperature used in the model
 Model['Power_EnergySum_kWh'] = Model['Power_EnergySum_kWh'] - Model.loc[0, 'Power_EnergySum_kWh']
 Model['T_Ambient_EcoNet_C'] = (Model['T_Ambient_EcoNet_F']-32) * 1/K_To_F_MagnitudeOnly
 Model['T_Cabinet_C'] = (Model['T_Cabinet_F']-32) * 1/K_To_F_MagnitudeOnly
 Model['T_Tank_Upper_C'] = (Model['T_TankUpper_F']-32) * 1/K_To_F_MagnitudeOnly
 Model['T_Tank_Lower_C'] = (Model['T_TankLower_F']-32) * 1/K_To_F_MagnitudeOnly
 
+if Variable_Set_Temperature == 0: #If the user has opted to use a static set temperature
+    Model['T_Setpoint_C'] = Temperature_Tank_Set #Make the set temperature at all times equal the static set temperature specified by the user
 
+Model['T_Activation_Backup_C'] = Model['T_Setpoint_C'] - Threshold_Activation_Backup
 
 
 #This commented code is from the GTI gas HPWH model. It is currently stored here for reference, in case it's needed, and will likely be deleted shortly
@@ -261,6 +249,7 @@ if Compare_To_MeasuredData == 1:
     p1.title.text_font_size = '12pt'
     p1.line(x = Model['Time (hr)'], y = Model['Electric Power (W)'], legend = 'Model', color = 'red')
     p1.circle(x = Model['Time (hr)'], y = Model['Power_PowerSum_W'], legend = 'Data', color = 'blue')   
+    p1.circle(x = Model['Time (hr)'], y = Model['T_Setpoint_F'], legend = 'Set Temperature', color = 'orange')
     p1.legend.label_text_font_size = '18pt'
     p1.legend.location = 'bottom_right'
     p1.xaxis.axis_label_text_font_size = '18pt'
@@ -278,6 +267,7 @@ if Compare_To_MeasuredData == 1:
     p3.line(x = Model['Time (hr)'], y = Model['Tank Temperature (deg C)'], legend = 'Model, Tank Average', color = 'red')
     p3.circle(x = Model['Time (hr)'], y = Model['T_Tank_Upper_C'], legend = 'Data, Upper', color = 'blue') 
     p3.circle(x = Model['Time (hr)'], y = Model['T_Tank_Lower_C'], legend = 'Data, Lower', color = 'purple') 
+    p3.circle(x = Model['Time (hr)'], y = Model['T_Setpoint_C'], legend = 'Set Temperature', color = 'orange')
     p3.legend.label_text_font_size = '18pt'
     p3.legend.location = 'bottom_right'
     p3.xaxis.axis_label_text_font_size = '18pt'
