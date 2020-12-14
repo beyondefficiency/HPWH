@@ -30,11 +30,8 @@ def Model_HPWH_MixedTank(Model, Parameters, Regression_COP):
 
     data = Model.to_numpy() #convert the dataframe to a numpy array for EXTREME SPEED!!!! (numpy opperates in C)
     col_indx = dict(zip(Model.columns, list(range(0,len(Model.columns))))) #create a dictionary to provide column index references while using numpy in following loop
-    
-#    data[0, col_indx['Electricity CO2 Multiplier (lb/kWh)']] = Parameters[10][data[0, col_indx['Hour of Year (hr)']]]
 
     for i  in range(1, len(data)): #Perform the modeling calculations for each row in the index
-        # 1- Calculate the jacket losses through the walls of the tank in Btu:
         #THESE TWO LINES OF CODE ARE ONLY APPROPRIATE WHEN SIMULATING MONITORED DATA IN THE CREEKSIDE PROJECT
         #The monitoring setup sometimes experiences data outages. We don't know the ambient temperature or hot water conusmption
         #during those outages. As a result, the model can't correctly predict what happens during those outages. To get the model
@@ -42,7 +39,7 @@ def Model_HPWH_MixedTank(Model, Parameters, Regression_COP):
         #returns
 #        if data[i, col_indx['Timestep (min)']] > 5: #If the time since the last recording is > 5 minutes we assume there was a data collection outage
 #            data[i, col_indx['Tank Temperature (deg C)']] = 0.5 * (data[i, col_indx['T_Tank_Upper_C']] + data[i, col_indx['T_Tank_Lower_C']]) #When data collection resumes we re-initialize the tank at current conditions by setting the water temperature equal to the average of the thermostat measurements
-        
+        # 1 - Calculate the jacket losses from the water in the tank to the ambient air
         data[i, col_indx['Jacket Losses (J)']] = -Parameters[0] * (data[i,col_indx['Tank Temperature (deg C)']] - data[i,col_indx['Ambient Temperature (deg C)']]) * (data[i, col_indx['Timestep (min)']] * Seconds_In_Minute)
         # 2- Calculate the energy added to the tank using the backup electric resistance element, if any:
         if data[i-1, col_indx['Energy Added Backup (J)']] == 0:  #If the backup heating element was NOT active during the last time step, Calculate the energy added to the tank using the backup electric resistance elements
