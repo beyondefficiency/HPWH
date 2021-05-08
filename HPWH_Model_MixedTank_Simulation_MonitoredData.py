@@ -74,6 +74,10 @@ Coefficient_2ndOrder_COP = 0 #The 2nd order coefficient in the COP equation
 Coefficient_1stOrder_COP = -0.037 #The 1st order coefficient in the COP equation
 Constant_COP = 7.67 #The constant in the COP equation
 Temperature_MixingValve_Set = 48.9 #deg C, set temperature of the mixing valve
+Coefficient_2ndOrder_COP_Adjust_Tamb = 0.000055 # The 2nd order coefficient in the COP derate for ambient temperature equation
+Coefficient_1stOrder_COP_Adjust_Tamb = -0.0077 # The 2nd order coefficient in the COP derate for ambient temperature equation
+Constant_COP_Adjust_Tamb = 0.2874 # The 2nd order coefficient in the COP derate for ambient temperature equation
+COP_Adjust_Reference_Temperature = 19.7222 # The ambient temperature that the COP coefficients represent
 
 #%%--------------------------INPUTS-------------------------------------------
 
@@ -117,7 +121,7 @@ kWh_In_MWh = 1000 #kWh in MWh
 Liters_In_Gallon = 3.78541 #The number of liters in a gallon
 
 #Calculating the CO2 produced per kWh of electricity consumed
-CO_Production_Rate_Electricity = CO2_Output_Electricity * Pounds_In_Ton * kWh_In_MWh
+CO2_Production_Rate_Electricity = CO2_Output_Electricity * Pounds_In_Ton * kWh_In_MWh
 
 #Calculating the thermal mass of the water in the storage tank
 ThermalMass_Tank = Volume_Tank * Density_Water * SpecificHeat_Water
@@ -132,13 +136,18 @@ Parameters = [Coefficient_JacketLoss, #0
                 Temperature_Tank_Set_Deadband, #6
                 ThermalMass_Tank, #7
                 ElectricityConsumption_Active, #8
-                ElectricityConsumption_Idle] #9
+                ElectricityConsumption_Idle, #9
+                CO2_Production_Rate_Electricity, #10
+                COP_Adjust_Reference_Temperature] #11
 
 #%%--------------------------MODELING-----------------------------------------
 
 #Creates a 1 dimensional regression stating the COP of the gas heat pump as a function of the temperature of water in the tank
 Coefficients_COP = [Coefficient_2ndOrder_COP, Coefficient_1stOrder_COP, Constant_COP] #combines the coefficient and the constant into an array
 Regression_COP = np.poly1d(Coefficients_COP) #Creates a 1-d linear regression stating the COP of the heat pump as a function of the temperature of water in the tank
+
+Coefficients_COP_Derate_Tamb = [Coefficient_2ndOrder_COP_Adjust_Tamb, Coefficient_1stOrder_COP_Adjust_Tamb, Constant_COP_Adjust_Tamb] #combines the coefficient and the constant into an array
+Regression_COP_Derate_Tamb = np.poly1d(Coefficients_COP_Derate_Tamb) #Creates a 1-d linear regression stating the COP of the heat pump as a function of the temperature of water in the tank
 
 Draw_Profile = pd.read_csv(Path_DrawProfile) #Reads the input data, setting the first row (measurement name) of the .csv file as the header
 
@@ -169,7 +178,7 @@ Model['Water_FlowRate_LPerMin'] = Model['Water_FlowRate_gpm'] * Liters_In_Gallon
 Model['Water_FlowTotal_L'] = Model['Water_FlowTotal_gal'] * Liters_In_Gallon #Creates a new column representing the total measured water flow, converted from gal to L
 Model['Water_FlowTemp_C'] = (Model['Water_FlowTemp_F']-32) * 1/K_To_F_MagnitudeOnly #Creates a new column representing the outlet water temperature, converted from F to C
 Model['Water_RemoteTemp_C'] = (Model['Water_RemoteTemp_F']-32) * 1/K_To_F_MagnitudeOnly #Creates a new column representing the inlet water temperature, converted from F to C
-Model['T_Setpoint_C'] = (Model['T_Setpoint_F']-32) * 1/K_To_F_MagnitudeOnly #Create a column in the model representing the user-supplied, possibly varying, set temperature in deg C. If Variable_Set_Temperature == 1 this will be the set temperature used in the model
+Model['Set Temperature (deg C)'] = (Model['T_Setpoint_F']-32) * 1/K_To_F_MagnitudeOnly #Create a column in the model representing the user-supplied, possibly varying, set temperature in deg C. If Variable_Set_Temperature == 1 this will be the set temperature used in the model
 Model['Power_EnergySum_kWh'] = Model['Power_EnergySum_kWh'] - Model.loc[0, 'Power_EnergySum_kWh'] #Resets the cumulative electricity consumption column to use 0 as the value at the start of the monitoring period
 Model['T_Ambient_EcoNet_C'] = (Model['T_Ambient_EcoNet_F']-32) * 1/K_To_F_MagnitudeOnly #Creates a new column representing the ambient temperature, converted from F to C
 Model['T_Cabinet_C'] = (Model['T_Cabinet_F']-32) * 1/K_To_F_MagnitudeOnly #Creates a new column representing the air temperature in the cabinet, converted from F to C
@@ -177,9 +186,9 @@ Model['T_Tank_Upper_C'] = (Model['T_TankUpper_F']-32) * 1/K_To_F_MagnitudeOnly #
 Model['T_Tank_Lower_C'] = (Model['T_TankLower_F']-32) * 1/K_To_F_MagnitudeOnly #Creates a new column representing the water temperature reported by the lower thermostat in the tank, converted from F to C
 
 if Variable_Set_Temperature == 0: #If the user has opted to use a static set temperature
-    Model['T_Setpoint_C'] = Temperature_Tank_Set #Make the set temperature at all times equal the static set temperature specified by the user
+    Model['Set Temperature (deg C)'] = Temperature_Tank_Set #Make the set temperature at all times equal the static set temperature specified by the user
 
-Model['T_Activation_Backup_C'] = Model['T_Setpoint_C'] - Threshold_Activation_Backup #Set the activation temperature for the backup resistance element equal to the set temperature minus an additional delta before the resistance element engages
+Model['T_Activation_Backup_C'] = Model['Set Temperature (deg C)'] - Threshold_Activation_Backup #Set the activation temperature for the backup resistance element equal to the set temperature minus an additional delta before the resistance element engages
 
 Simulation_Start = time.time() #Identifies the current time when the simulation is started. This is later used to identify the time required to complete the simulation for diagnostic purposes
 
@@ -194,6 +203,7 @@ Model['Energy Added Heat Pump (J)'] = 0 #Creates a column for the energy added b
 Model['Energy Added Total (J)'] = 0 #Creates a column for the energy added by all sources and sets all cells to 0 J
 Model['COP'] = 0 #Creates a column representing the calculated coefficient of performance of the heat pump and sets all cells to 0 J
 Model['Total Energy Change (J)'] = 0 #Creates a column representing the total energy change in the storage tank over each timestep and sets all cells to 0 J
+Model['COP Adjust Tamb'] = 0 # Adjustment for the COP based on how T_Amb differs from 67.5 deg C
 
 #Sets the following two parameters equal to the monitored data for the entire simulation
 Model['Ambient Temperature (deg C)'] = Model['T_Cabinet_C'] #Sets ambient temperature in the simulation model equal to the monitored temperature in the cabinet
@@ -253,7 +263,7 @@ if Compare_To_MeasuredData == 1:
     p3.line(x = Model['Time (hr)'], y = Model['Tank Temperature (deg C)'], legend = 'Model, Tank Average', color = 'red')
     p3.circle(x = Model['Time (hr)'], y = Model['T_Tank_Upper_C'], legend = 'Data, Upper', color = 'blue') 
     p3.circle(x = Model['Time (hr)'], y = Model['T_Tank_Lower_C'], legend = 'Data, Lower', color = 'purple') 
-    p3.circle(x = Model['Time (hr)'], y = Model['T_Setpoint_C'], legend = 'Set Temperature', color = 'orange')
+    p3.circle(x = Model['Time (hr)'], y = Model['Set Temperature (deg C)'], legend = 'Set Temperature', color = 'orange')
     p3.legend.label_text_font_size = '18pt'
     p3.legend.location = 'bottom_right'
     p3.xaxis.axis_label_text_font_size = '18pt'

@@ -26,7 +26,7 @@ SpecificHeat_Water = 4.190 #J/g-C
 Density_Water = 1000 #g/L
 kWh_In_Wh = 1/1000 #Conversion from Wh to kWh
 
-def Model_HPWH_MixedTank(Model, Parameters, Regression_COP):
+def Model_HPWH_MixedTank(Model, Parameters, Regression_COP, Regression_COP_Derate_Tamb):
 
     data = Model.to_numpy() #convert the dataframe to a numpy array for EXTREME SPEED!!!! (numpy opperates in C)
     col_indx = dict(zip(Model.columns, list(range(0,len(Model.columns))))) #create a dictionary to provide column index references while using numpy in following loop
@@ -52,7 +52,7 @@ def Model_HPWH_MixedTank(Model, Parameters, Regression_COP):
         
         data[i, col_indx['Energy Added Heat Pump (J)']] = (
                 Parameters[4]
-                * int(data[i, col_indx['Tank Temperature (deg C)']] < (data[i, col_indx['T_Setpoint_C']] - Parameters[6]) or data[i-1, col_indx['Energy Added Heat Pump (J)']] > 0 and data[i, col_indx['Tank Temperature (deg C)']] < data[i, col_indx['T_Setpoint_C']])
+                * int(data[i, col_indx['Tank Temperature (deg C)']] < (data[i, col_indx['Set Temperature (deg C)']] - Parameters[6]) or data[i-1, col_indx['Energy Added Heat Pump (J)']] > 0 and data[i, col_indx['Tank Temperature (deg C)']] < data[i, col_indx['Set Temperature (deg C)']])
                 * (data[i, col_indx['Timestep (min)']] * Seconds_In_Minute)
                 )
         # 5 - Calculate the energy change in the tank during the previous timestep
@@ -64,7 +64,8 @@ def Model_HPWH_MixedTank(Model, Parameters, Regression_COP):
             
     Model = pd.DataFrame(data=data[0:,0:],index=Model.index,columns=Model.columns) #convert Numpy Array back to a Dataframe to make it more user friendly
     
-    Model['COP'] = Regression_COP(1.8 * Model['Tank Temperature (deg C)'] + 32)
+    Model['COP Adjust Tamb'] = Regression_COP_Derate_Tamb(Model['Tank Temperature (deg C)']) * (Model['Ambient Temperature (deg C)'] - Parameters[11])
+    Model['COP'] = Regression_COP(1.8 * Model['Tank Temperature (deg C)'] + 32) + Model['COP Adjust Tamb']
     Model['Electric Power (W)'] = np.where(Model['Timestep (min)'] > 0, (Model['Energy Added Heat Pump (J)']) / (Model['Timestep (min)'] * Seconds_In_Minute), 0)/Model['COP'] + np.where(Model['Timestep (min)'] > 0, Model['Energy Added Backup (J)']/(Model['Timestep (min)'] * Seconds_In_Minute), 0)
     Model['Electricity Consumed (kWh)'] = (Model['Electric Power (W)'] * Model['Timestep (min)']) / (Watts_In_kiloWatt * Minutes_In_Hour)
     Model['Energy Added Total (J)'] = Model['Energy Added Heat Pump (J)'] + Model['Energy Added Backup (J)'] #Calculate the total energy added to the tank during this timestep

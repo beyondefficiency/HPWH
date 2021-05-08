@@ -13,7 +13,7 @@ import sys
 import time
 from linetimer import CodeTimer
 from datetime import datetime
-import HPWH_Model_OccupantLearning as HPWH
+import HPWH_Model as HPWH
 
 ST = time.time() #begin to time the script
 
@@ -30,7 +30,7 @@ Temperature_Ambient = 20 #Deg C, temperature of the ambient air
 Volume_Tank = 290 #L, volume of water held in the storage tank
 Coefficient_JacketLoss = 2.8 #W/K, Default value matches the Rheem PROPH80
 Power_Backup = 3800 #W, electricity consumption of the backup resistance elements
-Threshold_Activation_Backup = 35 #Deg C, backup element operates when tank temperature is below this threshold. Note that this operate at the same time as the heat pump
+Threshold_Activation_Backup = 15 #deg C, backup element operates when tank temperature is this far below the set temperature. This parameter operates as a deadband. Note that this operate at the same time as the heat pump (100 F is the default)
 Threshold_Deactivation_Backup = Temperature_Tank_Set #Deg C, sets the temperature when the backup element disengages after it has been engaged
 HeatAddition_HeatPump = 1230.9 #W, heat consumed by the heat pump
 ElectricityConsumption_Active = 158.5 #W, electricity consumed by the fan when the heat pump is running
@@ -39,6 +39,10 @@ CO2_Output_Electricity = 0.212115 #ton/MWh, CO2 production when the HPWH consume
 Coefficient_2ndOrder_COP = 0 #The 2nd order coefficient in the COP equation
 Coefficient_1stOrder_COP = -0.037 #The 1st order coefficient in the COP equation
 Constant_COP = 7.67 #The constant in the COP equation
+Coefficient_2ndOrder_COP_Adjust_Tamb = 0.000055 # The 2nd order coefficient in the COP derate for ambient temperature equation
+Coefficient_1stOrder_COP_Adjust_Tamb = -0.0077 # The 2nd order coefficient in the COP derate for ambient temperature equation
+Constant_COP_Adjust_Tamb = 0.2874 # The 2nd order coefficient in the COP derate for ambient temperature equation
+COP_Adjust_Reference_Temperature = 19.7222 # The ambient temperature that the COP coefficients represent
 
 #%%--------------------------USER INPUTS------------------------------------------
 # example full draw profile file name:
@@ -61,7 +65,7 @@ Learning_Results_Path = r'C:\Users\Peter Grant\Dropbox (Beyond Efficiency)\Peter
 Learning_Monitoring_Period = 30 #Days to use in the learning algorithm averaging period
 
 vary_inlet_temp = True # enter False to fix inlet water temperature constant, and True to take the inlet water temperature from the draw profile file (to make it vary by climate zone)
-Vary_CO2_Elec = True #Enter True is reading the CO2 multipliers from a data file, enter False if using the CO2 multiplier specified above
+Vary_CO2_Elec = False #Enter True is reading the CO2 multipliers from a data file, enter False if using the CO2 multiplier specified above
 Vary_Set_Temperature = False #Set this to True if using a time-varying set temperature (E.g. Performing load shifting simulations). Set it to False if using a static set temperature. NOTE: THE CAPABILITY TO USE A DYNAMIC SET TEMPERATURE IS NOT CURRENTLY AVAILABLE. THIS WAS SET UP BECAUSE _Model IS NOW CAPABLE OF IT. I NEED TO DEVELOP THE ABILITY TO INPUT A SET TEMPERATURE
 
 #There are two available base paths to use in the next two lines. uncomment the format you want and use it
@@ -88,6 +92,9 @@ if Vary_CO2_Elec == True: #If the user has elected to use time-varying CO2 multi
 #COP regression calculations
 Coefficients_COP = [Coefficient_2ndOrder_COP, Coefficient_1stOrder_COP, Constant_COP] #combines the coefficient and the constant into an array
 Regression_COP = np.poly1d(Coefficients_COP) #Creates a 1-d linear regression stating the COP of the heat pump as a function of the temperature of water in the tank
+
+Coefficients_COP_Derate_Tamb = [Coefficient_2ndOrder_COP_Adjust_Tamb, Coefficient_1stOrder_COP_Adjust_Tamb, Constant_COP_Adjust_Tamb] #combines the coefficient and the constant into an array
+Regression_COP_Derate_Tamb = np.poly1d(Coefficients_COP_Derate_Tamb) #Creates a 1-d linear regression stating the COP of the heat pump as a function of the temperature of water in the tank
 
 #Constants used in water-based calculations
 SpecificHeat_Water = 4.190 #J/g-C
@@ -128,7 +135,8 @@ Parameters = [Coefficient_JacketLoss, #0
                 ThermalMass_Tank, #7
                 ElectricityConsumption_Active, #8
                 ElectricityConsumption_Idle, #9
-                CO2_Production_Rate_Electricity] #10
+                CO2_Production_Rate_Electricity, #10
+                COP_Adjust_Reference_Temperature] #11
 
 #%%--------------------------MODELING-----------------------------------------
 
@@ -213,13 +221,21 @@ Model['Energy Added Backup (J)'] = 0
 Model['Energy Added Heat Pump (J)'] = 0
 Model['Energy Added Total (J)'] = 0
 Model['COP'] = 0
+Model['COP Adjust Tamb'] = 0 # Adjustment for the COP based on how T_Amb differs from 67.5 deg C
 Model['Total Energy Change (J)'] = 0
 Model['Timestep (min)'] = Timestep
 Model['Hour of Year (hr)'] = (Model['Time (min)']/60).astype(int)
 Model['Electricity CO2 Multiplier (lb/kWh)'] = 0
 
+if Vary_Set_Temperature == False:
+    Model['Set Temperature (deg C)'] = Temperature_Tank_Set
+
+Model['T_Activation_Backup_C'] = Model['Set Temperature (deg C)'] - Threshold_Activation_Backup #Set the activation temperature for the backup resistance element equal to the set temperature minus an additional delta before the resistance element engages
+
+
+
 #The following code simulates the performance of the gas HPWH
-Model = HPWH.Model_HPWH_MixedTank(Model, Parameters, Regression_COP, True, Peak_Start, Peak_End, Learning_Data_Path, Learning_Results_Path, Learning_Monitoring_Period)
+Model = HPWH.Model_HPWH_MixedTank(Model, Parameters, Regression_COP, Regression_COP_Derate_Tamb)
 
 #%%--------------------------WRITE RESULTS TO FILE-----------------------------------------
 Model.to_csv(Path_DrawProfile_Output, index = False) #Save the model to the declared file.
