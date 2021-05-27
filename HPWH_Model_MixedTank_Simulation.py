@@ -22,8 +22,11 @@ ST = time.time() #begin to time the script
 #These inputs are a series of constants describing the conditions of the simulation.
 #The constants describing the gas HPWH itself come from communications with Alex and Paul of GTI,
 #and may need to be updated if they send new values
+Temperature_Tank_Set = {'0': 48.9, '1': 48.9, '2': 48.9, '3': 48.9, '4': 48.9, '5': 48.9, '6': 48.9,
+                        '7': 48.9, '8': 48.9, '9': 48.9, '10': 60, '11': 60, '12': 60, '13': 60,
+                        '14': 60, '15': 60, '16': 48.9, '17': 48.9, '18': 48.9, '19': 48.9, '20': 48.9,
+                        '21': 48.9, '22': 48.9, '23': 48.9} #deg C, set temperature of the HPWH each hour of the day
 Temperature_Tank_Initial = 50.5 #Deg C, initial temperature of water in the storage tank. 115 F is the standard set temperature in CBECC
-Temperature_Tank_Set = 50.5 #Deg C, set temperature of the HPWH. 115 F is the standard set temperature in CBECC
 Temperature_Tank_Set_Deadband = 3.5 #Deg C, deadband on the thermostat based on e-mail from Paul Glanville on Oct 31, 2019
 Temperature_Water_Inlet = 4.4 #Deg C, inlet water temperature in this simulation. Note that this value is only used if vary_inlet_temp = False
 Temperature_Ambient = 20 #Deg C, temperature of the ambient air
@@ -39,9 +42,9 @@ CO2_Output_Electricity = 0.212115 #ton/MWh, CO2 production when the HPWH consume
 Coefficient_2ndOrder_COP = 0 #The 2nd order coefficient in the COP equation
 Coefficient_1stOrder_COP = -0.037 #The 1st order coefficient in the COP equation
 Constant_COP = 7.67 #The constant in the COP equation
-Coefficient_2ndOrder_COP_Adjust_Tamb = 0.000055 # The 2nd order coefficient in the COP derate for ambient temperature equation
-Coefficient_1stOrder_COP_Adjust_Tamb = -0.0077 # The 2nd order coefficient in the COP derate for ambient temperature equation
-Constant_COP_Adjust_Tamb = 0.2874 # The 2nd order coefficient in the COP derate for ambient temperature equation
+Coefficient_2ndOrder_COP_Adjust_Tamb = 0.000055 # The 2nd order coefficient in the COP adjustment for ambient temperature equation
+Coefficient_1stOrder_COP_Adjust_Tamb = -0.0077 # The 2nd order coefficient in the COP adjustment for ambient temperature equation
+Constant_COP_Adjust_Tamb = 0.2874 # The 2nd order coefficient in the COP adjustment for ambient temperature equation
 COP_Adjust_Reference_Temperature = 19.7222 # The ambient temperature that the COP coefficients represent
 
 #%%--------------------------USER INPUTS------------------------------------------
@@ -57,29 +60,17 @@ ClimateZone = 1 #CA climate zone to use in the simulation
 #Include_Code = 'FSCDB' #FSCDB is the longest this can be. This defines what type of draws are included in the draw profile. Faucet, Shower, Clothes washer, Dish Washer, and Bath
 #Version = 2019 #States the version of the T24 draw profile data set to use. Currently, available options are 2016 and 2019
 
+Simulation_Start = datetime(2021, 1, 1, 0, 0) #Set the start time of the simulation. Default is 2021/Jan/1 at Midnight (00:00)
 Timestep = 5 #Timestep to use in the draw profile and simulation, in minutes. The finer the timestep, the better the model, but the longer the model takes to run
 Peak_Start = 12 + 4 #hr, represents the start time of the peak period. The default value is 12 + 4 representing 4 PM
 Peak_End = 12 + 9 #hr, represents the start time of the peak period. The default value is 12 + 9 representing 9 PM
-Learning_Data_Path = r'C:\Users\Peter Grant\Dropbox (Beyond Efficiency)\Peter\Python Scripts\HPWH\Output\Learning_Data.csv'
-Learning_Results_Path = r'C:\Users\Peter Grant\Dropbox (Beyond Efficiency)\Peter\Python Scripts\HPWH\Output\Learning_Statistics.csv'
-Learning_Monitoring_Period = 30 #Days to use in the learning algorithm averaging period
 
 vary_inlet_temp = True # enter False to fix inlet water temperature constant, and True to take the inlet water temperature from the draw profile file (to make it vary by climate zone)
 Vary_CO2_Elec = False #Enter True is reading the CO2 multipliers from a data file, enter False if using the CO2 multiplier specified above
-Vary_Set_Temperature = False #Set this to True if using a time-varying set temperature (E.g. Performing load shifting simulations). Set it to False if using a static set temperature. NOTE: THE CAPABILITY TO USE A DYNAMIC SET TEMPERATURE IS NOT CURRENTLY AVAILABLE. THIS WAS SET UP BECAUSE _Model IS NOW CAPABLE OF IT. I NEED TO DEVELOP THE ABILITY TO INPUT A SET TEMPERATURE
 
-#There are two available base paths to use in the next two lines. uncomment the format you want and use it
-# Path_DrawProfile_Base_Path = os.path.dirname(__file__) + os.sep + 'Data' + os.sep + 'Draw_Profiles' + os.sep
-#Path_DrawProfile_Base_Path = os.path.dirname(__file__) + os.sep + 'Data' + os.sep + 'Draw_Profiles'
-#Path_DrawProfile_File_Name = 'Bldg={0}_CZ={1}_Wat={2}_Prof={3}_SDLM={4}_CFA={5}_Inc={6}_Ver={7}.csv'.format(str(Building_Type),str(ClimateZone),str(Water),str(Bedrooms),str(SDLM),str(FloorArea_Conditioned),str(Include_Code),str(Version))
-#Path_DrawProfile = Path_DrawProfile_Base_Path + os.sep + Path_DrawProfile_File_Name
 Path_DrawProfile = r'C:\Users\Peter Grant\Dropbox (Beyond Efficiency)\Peter\Python Scripts\GasHPWH_Model_git\Data\Draw_Profiles\Bldg=Single_CZ=1_Wat=Hot_Prof=1_SDLM=Yes_CFA=800_Inc=FSCDB_Ver=2019.csv'
-
-# Path_DrawProfile_Base_Output_Path = '/Users/nathanieliltis/Dropbox (Beyond Efficiency)/Beyond Efficiency Team Folder/Frontier - Final Absorption HPWH Simulation Scripts/Comparison to Other WHs/Individual Outputs of Simulation Model'
-#Path_DrawProfile_Output_Base_Path = os.path.dirname(__file__) + os.sep + 'Output'
-#Path_DrawProfile_Output_File_Name = 'Output_' + Path_DrawProfile_File_Name #Save the file with Output_ followed by the name of the draw profile
-#Path_DrawProfile_Output = Path_DrawProfile_Output_Base_Path + os.sep + Path_DrawProfile_Output_File_Name
-Path_DrawProfile_Output = r'C:\Users\Peter Grant\Dropbox (Beyond Efficiency)\Peter\Python Scripts\HPWH\Output\Bldg=Single_CZ=1_Wat=Hot_Prof=1_SDLM=Yes_CFA=800_Inc=FSCDB_Ver=2019.csv'
+Filename = Path_DrawProfile.split('Draw_Profiles\\')[1]
+Path_Output = os.path.dirname(__file__) + os.sep + 'Output' + os.sep + 'Output_' + Filename
 
 if Vary_CO2_Elec == True: #If the user has elected to use time-varying CO2 multipliers this code will read the data set, identify the desired data, create a new data series containing the hourly multipliers for this simulation
     Folder_CO2_Elec = r'C:\Users\Peter Grant\Dropbox (Beyond Efficiency)\Peter\Python Scripts\GasHPWH_Model_git\Data\CO2' #Specify the folder where the electric CO2 data is located
@@ -93,8 +84,9 @@ if Vary_CO2_Elec == True: #If the user has elected to use time-varying CO2 multi
 Coefficients_COP = [Coefficient_2ndOrder_COP, Coefficient_1stOrder_COP, Constant_COP] #combines the coefficient and the constant into an array
 Regression_COP = np.poly1d(Coefficients_COP) #Creates a 1-d linear regression stating the COP of the heat pump as a function of the temperature of water in the tank
 
-Coefficients_COP_Derate_Tamb = [Coefficient_2ndOrder_COP_Adjust_Tamb, Coefficient_1stOrder_COP_Adjust_Tamb, Constant_COP_Adjust_Tamb] #combines the coefficient and the constant into an array
-Regression_COP_Derate_Tamb = np.poly1d(Coefficients_COP_Derate_Tamb) #Creates a 1-d linear regression stating the COP of the heat pump as a function of the temperature of water in the tank
+Coefficients_COP_Adjust_Tamb = [Coefficient_2ndOrder_COP_Adjust_Tamb, Coefficient_1stOrder_COP_Adjust_Tamb, \
+                                Constant_COP_Adjust_Tamb] #combines the coefficient and the constant into an array
+Regression_COP_Adjust_Tamb = np.poly1d(Coefficients_COP_Adjust_Tamb) #Creates a 1-d linear regression stating the COP of the heat pump as a function of the temperature of water in the tank
 
 #Constants used in water-based calculations
 SpecificHeat_Water = 4.190 #J/g-C
@@ -115,7 +107,8 @@ kWh_In_MWh = 1000 #kWh in MWh
 #Note that this object becomes a float if Vary_C02_Elec == False but is a dataframe series if it is
 CO2_Production_Rate_Electricity = CO2_Output_Electricity * Pounds_In_Ton / kWh_In_MWh
 if Vary_CO2_Elec == True:
-    CO2_Production_Rate_Electricity = CO2_Production_Rate_Electricity.rename_axis('CZ' + str(ClimateZone) + 'Electricity Long-Run Carbon Emission Factors (lb/kWh)')
+    CO2_Production_Rate_Electricity = CO2_Production_Rate_Electricity.rename_axis('CZ' + str(ClimateZone) + \
+    'Electricity Long-Run Carbon Emission Factors (lb/kWh)')
 else:
     CO2_Production_Rate_Electricity = pd.Series(data = CO2_Production_Rate_Electricity)
     CO2_Production_Rate_Electricity.repeat(8760)
@@ -144,12 +137,17 @@ Parameters = [Coefficient_JacketLoss, #0
 #The first step is putting the draw profile data into the right format (E.g. If it's CBECC data,
 # we need to convert from event-based to timestep-based)
 
+end_inputs = time.time()
+print('Reading inputs took {} seconds.'.format(end_inputs - ST))
+
 Draw_Profile = pd.read_csv(Path_DrawProfile) #Create a data frame called Draw_Profile containing the CBECC-Res information
 
 Draw_Profile['Day of Year (Day)'] = Draw_Profile['Day of Year (Day)'].astype(int) #make sure the days are in integer format, not float, as a sanity check on work below
 Unique_Days = Draw_Profile['Day of Year (Day)'].unique() #Identifies the number of unique days included in the draw profile
-Continuous_Index_Range_of_Days = range(Draw_Profile['Day of Year (Day)'].min(), Draw_Profile['Day of Year (Day)'].max() + 1) #outlines the full time coveraeofthe data (full days)
-Missing_Days = [x for x in range(Draw_Profile['Day of Year (Day)'].min(), Draw_Profile['Day of Year (Day)'].max() + 1) if x not in Unique_Days] #identifies the specific days missing
+Continuous_Index_Range_of_Days = range(Draw_Profile['Day of Year (Day)'].min(), \
+    Draw_Profile['Day of Year (Day)'].max() + 1) #outlines the full time coveraeofthe data (full days)
+Missing_Days = [x for x in range(Draw_Profile['Day of Year (Day)'].min(), \
+                Draw_Profile['Day of Year (Day)'].max() + 1) if x not in Unique_Days] #identifies the specific days missing
 
 #This code creates a dataframe covering the full continuous range of draw profiles with whatever timesteps are specified and converts the CBECC-Res draw profiles into that format
 Index_Model= int(len(Continuous_Index_Range_of_Days) * Hours_In_Day * Minutes_In_Hour / Timestep) #Identifies the number of timestep bins covered in the draw profile
@@ -159,8 +157,11 @@ Model['Time (min)'] = Model.index * Timestep #Create a column in the data frame 
 Model['Hot Water Draw Volume (gal)'] = 0 #Set the default data for hot water draw volume in each time step to 0. This value will later be edited as specific flow volumes for each time step are calculated
 Model['Inlet Water Temperature (deg F)'] = 0 #initialize the inlet temperature column with all 0's, to be filled in below
 First_Day = Draw_Profile.loc[0, 'Day of Year (Day)'] #Identifies the day (In integer relative to 365 form, not date form) of the first day of the draw profile
-Draw_Profile['Start Time of Profile (min)'] = Draw_Profile['Start time (hr)'] * Minutes_In_Hour + (Draw_Profile['Day of Year (Day)'] - First_Day) * Hours_In_Day * Minutes_In_Hour #Identifies the starting time of each hot water draw in Draw_Profile relative to first day of draw used
-Draw_Profile['End Time of Profile (min)'] = Draw_Profile['Start time (hr)'] * Minutes_In_Hour + Draw_Profile['Duration (min)'] + (Draw_Profile['Day of Year (Day)'] - First_Day) * Hours_In_Day * Minutes_In_Hour #Identifies the ending time of each hot water draw in Draw_Profile relative to first day of draw used
+Draw_Profile['Start Time of Profile (min)'] = Draw_Profile['Start time (hr)'] * Minutes_In_Hour + \
+    (Draw_Profile['Day of Year (Day)'] - First_Day) * Hours_In_Day * Minutes_In_Hour #Identifies the starting time of each hot water draw in Draw_Profile relative to first day of draw used
+Draw_Profile['End Time of Profile (min)'] = Draw_Profile['Start time (hr)'] * Minutes_In_Hour + \
+    Draw_Profile['Duration (min)'] + (Draw_Profile['Day of Year (Day)'] - First_Day) * Hours_In_Day * \
+    Minutes_In_Hour #Identifies the ending time of each hot water draw in Draw_Profile relative to first day of draw used
 
 for i in Draw_Profile.index: #Iterates through each draw in Draw_Profile
     Start_Time = Draw_Profile.loc[i, 'Start Time of Profile (min)'] #Reads the time when the draw starts
@@ -196,10 +197,15 @@ for i in Draw_Profile.index: #Iterates through each draw in Draw_Profile
         for i in range(bin_count):
             Model.loc[Bin_Start+i, 'Inlet Water Temperature (deg F)'] = This_Inlet_Temperature
 
+end_profile = time.time()
+print('Draw profile creation took {} seconds.'.format(end_profile - end_inputs))
+
 #fill in remaining values for mains temperature:
 if vary_inlet_temp == True:
-    Model['Inlet Water Temperature (deg F)'] = Model['Inlet Water Temperature (deg F)'].replace(to_replace=0, method='ffill') #forward fill method - uses closed previous non-zero value
-    Model['Inlet Water Temperature (deg F)'] = Model['Inlet Water Temperature (deg F)'].replace(to_replace=0, method='bfill') #backward fill method - uses closest subsequent non-zero value
+    Model['Inlet Water Temperature (deg F)'] = Model['Inlet Water Temperature (deg F)'].replace(to_replace=0, \
+          method='ffill') #forward fill method - uses closed previous non-zero value
+    Model['Inlet Water Temperature (deg F)'] = Model['Inlet Water Temperature (deg F)'].replace(to_replace=0, \
+          method='bfill') #backward fill method - uses closest subsequent non-zero value
 else: #(vary_inlet_temp == False)
     Model['Inlet Water Temperature (deg F)'] = Temperature_Water_Inlet #Sets the inlet temperature in the model equal to the value specified in INPUTS. This value could be replaced with a series of value
 
@@ -208,6 +214,9 @@ del Model['Inlet Water Temperature (deg F)']
 
 Model['Hot Water Draw Volume (L)'] = Model['Hot Water Draw Volume (gal)'] * 3.87541 #Convert hot water draw volume data from gal to L
 del Model['Hot Water Draw Volume (gal)']
+
+end_inlet = time.time()
+print('Calculating the varying inlet temperature took {} seconds.'.format(end_inlet - end_profile))
 
 Model['Ambient Temperature (deg C)'] = Temperature_Ambient #Sets the ambient temperature in the model equal to the value specified in INPUTS. This value could be replaced with a series of values
 
@@ -226,19 +235,25 @@ Model['Total Energy Change (J)'] = 0
 Model['Timestep (min)'] = Timestep
 Model['Hour of Year (hr)'] = (Model['Time (min)']/60).astype(int)
 Model['Electricity CO2 Multiplier (lb/kWh)'] = 0
+Model['Time Elapsed (timedelta)'] = pd.to_timedelta(Model['Time (min)'], unit = 'm')
+Model['Timestamp'] = Model['Time Elapsed (timedelta)'] + Simulation_Start
+Model['Hour'] = pd.DatetimeIndex(Model['Timestamp']).hour
+Model['Hour'] = Model['Hour'].astype(str)
+Model['Set Temperature (deg C)'] = Model['Hour'].map(Temperature_Tank_Set)
 
-if Vary_Set_Temperature == False:
-    Model['Set Temperature (deg C)'] = Temperature_Tank_Set
+Model['Temperature Activation Backup (deg C)'] = Model['Set Temperature (deg C)'] - Threshold_Activation_Backup #Set the activation temperature for the backup resistance element equal to the set temperature minus an additional delta before the resistance element engages
 
-Model['T_Activation_Backup_C'] = Model['Set Temperature (deg C)'] - Threshold_Activation_Backup #Set the activation temperature for the backup resistance element equal to the set temperature minus an additional delta before the resistance element engages
-
-
+end_initialization = time.time()
+print('Initializing the model took {} seconds.'.format(end_initialization - end_inlet))
 
 #The following code simulates the performance of the gas HPWH
-Model = HPWH.Model_HPWH_MixedTank(Model, Parameters, Regression_COP, Regression_COP_Derate_Tamb)
+Model = HPWH.Model_HPWH_MixedTank(Model, Parameters, Regression_COP, Regression_COP_Adjust_Tamb)
+
+end_simulation = time.time()
+print('Simulating took {} seconds.'.format(end_simulation - end_initialization))
 
 #%%--------------------------WRITE RESULTS TO FILE-----------------------------------------
-Model.to_csv(Path_DrawProfile_Output, index = False) #Save the model to the declared file.
+Model.to_csv(Path_Output, index = False) #Save the model to the declared file.
 
 ET = time.time() #begin to time the script
 print('script ran in {0} seconds'.format((ET - ST)))

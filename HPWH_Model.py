@@ -47,12 +47,12 @@ def Model_HPWH_MixedTank(Model, Parameters, Regression_COP, Regression_COP_Derat
         if data[i-1, col_indx['Energy Added Backup (J)']] == 0:  #If the backup heating element was NOT active during the last time step, Calculate the energy added to the tank using the backup electric resistance elements
             data[i, col_indx['Energy Added Backup (J)']] = Parameters[1] * \
                 int(data[i, col_indx['Tank Temperature (deg C)']] < \
-                data[i, col_indx['T_Activation_Backup_C']]) * (data[i, col_indx['Timestep (min)']] \
-                * Seconds_In_Minute)
+                data[i, col_indx['Temperature Activation Backup (deg C)']]) * \
+                (data[i, col_indx['Timestep (min)']] * Seconds_In_Minute)
         else: #If it WAS active during the last time step, Calculate the energy added to the tank using the backup electric resistance elements
             data[i, col_indx['Energy Added Backup (J)']] = Parameters[1] * int(data[i, 
-                col_indx['Tank Temperature (deg C)']] < Parameters[3]) * (data[i, 
-                col_indx['Timestep (min)']] * Seconds_In_Minute)
+                col_indx['Tank Temperature (deg C)']] < int(data[i, col_indx['Set Temperature (deg C)']])) * \
+                (data[i, col_indx['Timestep (min)']] * Seconds_In_Minute)
         # 3- Calculate the energy withdrawn by the occupants using hot water:
         data[i, col_indx['Energy Withdrawn (J)']] = -data[i, col_indx['Hot Water Draw Volume (L)']] * \
             Density_Water * SpecificHeat_Water * (data[i, col_indx['Tank Temperature (deg C)']] - \

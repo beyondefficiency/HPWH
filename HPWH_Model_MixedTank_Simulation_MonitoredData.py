@@ -54,8 +54,8 @@ from linetimer import CodeTimer
 #%%--------------------------HPWH PARAMETERS------------------------------
 
 #These inputs are a series of constants describing the conditions of the simulation. Many of them are overwritten with measurements
-#if Compare_To_MeasuredData = 1. The constants describing the gas HPWH itself come from communications with Alex of GTI, and may
-#need to be updated if he sends new values
+#if Compare_To_MeasuredData = 1
+
 Temperature_Tank_Set = {'0': 48.9, '1': 48.9, '2': 48.9, '3': 48.9, '4': 48.9, '5': 48.9, '6': 48.9,
                         '7': 48.9, '8': 48.9, '9': 48.9, '10': 60, '11': 60, '12': 60, '13': 60,
                         '14': 60, '15': 60, '16': 48.9, '17': 48.9, '18': 48.9, '19': 48.9, '20': 48.9,
@@ -87,11 +87,10 @@ Temperature_MixingValve_Set = 48.9 #deg C, set temperature of the mixing valve
 #This first variable provides the path to the data set itself. This means you should fill in the path with the specific location 
 #of your data file. Note that this works best if the file is on your hard drive, not a shared network drive
 cwd = os.getcwd()
-Path_DrawProfile = cwd + r'\Input\2020-05-31_P30104_3CFA.csv'
-#Reads the conditions of the data set (e.g. HPWHName + Dates) and stores it in FileName to create a final filename for use when saving the data set
-Filename_Start = -18
-Filename_End = -4
-Filename = Path_DrawProfile[Filename_Start:Filename_End] #Create a filename consisting the symbols between Filename_Start and FilenameEnd
+Path_DrawProfile = cwd + r'\Input\2020-05-30_P30104_3CFA.csv'
+
+Filename = Path_DrawProfile.split('Input\\')[1]
+Path_Output = os.path.dirname(__file__) + os.sep + 'Output' + os.sep + 'Output_' + Filename
 
 # Select the model for the set temperature
 # Monitored reads it from monitored data
@@ -101,7 +100,7 @@ Set_Temperature_Model = 'Simulated'
 #Set this = 1 if you want to compare model predictions to measured data results. This is useful for model validation and error
 #checking. If you want to only input the draw profile and see what the data predicts, set this = 0. Note that =1 mode causes the
 #calculations to take much longer
-Compare_To_MeasuredData = 1
+Compare_To_MeasuredData = 0
 
 #Time filetering inputs. Use these if you want to look at a specified portion of the data set
 Time_Filtering = 0 #Tells the program that time filtering is active
@@ -162,8 +161,9 @@ Draw_Profile['Timestamp'] = Draw_Profile.index
 Draw_Profile.index = pd.to_datetime(Draw_Profile.index)
 Draw_Profile['Time (s)'] = (Draw_Profile.index - Draw_Profile.index[0]).total_seconds()
 Draw_Profile['Time (min)'] = Draw_Profile['Time (s)'] / 60.
+Draw_Profile['Hour'] = pd.DatetimeIndex(Draw_Profile['Timestamp']).hour
 
-Model = Draw_Profile[['Timestamp', 'Time (s)', 'Time (min)', 'Power_PowerSum_W', 'Power_EnergySum_kWh', 
+Model = Draw_Profile[['Timestamp', 'Time (s)', 'Time (min)', 'Hour', 'Power_PowerSum_W', 'Power_EnergySum_kWh', 
                       'Water_FlowRate_gpm', 'Water_FlowTotal_gal', 'Water_FlowTemp_F', 'Water_RemoteTemp_F', 
                       'T_Setpoint_F', 'T_Ambient_EcoNet_F', 'T_Cabinet_F', 'T_TankUpper_F', 'T_TankLower_F',
                       ]].copy() #Creates a new dataframe with the same index as DrawProfile, keeping only the needed columns. NOTE: THIS CURRENTLY DOES NOT KEEP ALL NEEDED COLUMNS. WILL NEED TO MODIFY TO INCLUDE INLET TEMPERATURE, CLOSET AIR TEMPERATURE, CLOSET RELATIVE HUMIDITY WHEN THOSE COLUMNS ARE AVILABLE AND IDENTIFIED
@@ -200,16 +200,12 @@ Model['T_Cabinet_C'] = (Model['T_Cabinet_F']-32) * 1/K_To_F_MagnitudeOnly #Creat
 Model['T_Tank_Upper_C'] = (Model['T_TankUpper_F']-32) * 1/K_To_F_MagnitudeOnly #Creates a new column representing the water temperature reported by the upper thermostat in the tank, converted from F to C
 Model['T_Tank_Lower_C'] = (Model['T_TankLower_F']-32) * 1/K_To_F_MagnitudeOnly #Creates a new column representing the water temperature reported by the lower thermostat in the tank, converted from F to C
 Model['Timestamp'] = pd.to_datetime(Model['Timestamp'])
-for i in Model.index:
-    Model.loc[i, 'Hour'] = Model.loc[i, 'Timestamp'].hour
-Model['Hour'] = Model['Hour'].astype(int)
-
 
 if Set_Temperature_Model == 'Simulated': #If the user has opted to use an assumed set temperature
     Model['Hour'] = Model['Hour'].astype(str)
     Model['Set Temperature (deg C)'] = Model['Hour'].map(Temperature_Tank_Set)
 
-Model['T_Activation_Backup_C'] = Model['Set Temperature (deg C)'] - Threshold_Activation_Backup #Set the activation temperature for the backup resistance element equal to the set temperature minus an additional delta before the resistance element engages
+Model['Temperature Activation Backup (deg C)'] = Model['Set Temperature (deg C)'] - Threshold_Activation_Backup #Set the activation temperature for the backup resistance element equal to the set temperature minus an additional delta before the resistance element engages
 
 Simulation_Start = time.time() #Identifies the current time when the simulation is started. This is later used to identify the time required to complete the simulation for diagnostic purposes
 
@@ -254,7 +250,7 @@ Simulation_End = time.time() #Identify the time at the end of the simulation
 
 print ('Simulation time is ' + str(Simulation_End - Simulation_Start)) #Print the total time elapsed during the simulation for diagnostic purposes
 
-Model.to_csv(os.path.dirname(__file__) + os.sep + 'Output' + os.sep + 'Output_' + Filename + '.csv') #Save the model too the declared file. This should probably be replaced with a dynamic file name for later use in parametric simulations
+Model.to_csv(Path_Output) #Save the model too the declared file. This should probably be replaced with a dynamic file name for later use in parametric simulations
 
 #%%--------------------------MODEL COMPARISON-----------------------------------------
 
