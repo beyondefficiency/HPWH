@@ -40,34 +40,51 @@ def Model_HPWH_MixedTank(Model, Parameters, Regression_COP, Regression_COP_Derat
 #        if data[i, col_indx['Timestep (min)']] > 5: #If the time since the last recording is > 5 minutes we assume there was a data collection outage
 #            data[i, col_indx['Tank Temperature (deg C)']] = 0.5 * (data[i, col_indx['T_Tank_Upper_C']] + data[i, col_indx['T_Tank_Lower_C']]) #When data collection resumes we re-initialize the tank at current conditions by setting the water temperature equal to the average of the thermostat measurements
         # 1 - Calculate the jacket losses from the water in the tank to the ambient air
-        data[i, col_indx['Jacket Losses (J)']] = -Parameters[0] * (data[i,col_indx['Tank Temperature (deg C)']] - data[i,col_indx['Ambient Temperature (deg C)']]) * (data[i, col_indx['Timestep (min)']] * Seconds_In_Minute)
+        data[i, col_indx['Jacket Losses (J)']] = -Parameters[0] * (data[i,col_indx['Tank Temperature (deg C)']] 
+            - data[i,col_indx['Ambient Temperature (deg C)']]) * (data[i, col_indx['Timestep (min)']] * 
+            Seconds_In_Minute)
         # 2- Calculate the energy added to the tank using the backup electric resistance element, if any:
         if data[i-1, col_indx['Energy Added Backup (J)']] == 0:  #If the backup heating element was NOT active during the last time step, Calculate the energy added to the tank using the backup electric resistance elements
-            data[i, col_indx['Energy Added Backup (J)']] = Parameters[1] * int(data[i, col_indx['Tank Temperature (deg C)']] < data[i, col_indx['T_Activation_Backup_C']]) * (data[i, col_indx['Timestep (min)']] * Seconds_In_Minute)
+            data[i, col_indx['Energy Added Backup (J)']] = Parameters[1] * \
+                int(data[i, col_indx['Tank Temperature (deg C)']] < \
+                data[i, col_indx['T_Activation_Backup_C']]) * (data[i, col_indx['Timestep (min)']] \
+                * Seconds_In_Minute)
         else: #If it WAS active during the last time step, Calculate the energy added to the tank using the backup electric resistance elements
-            data[i, col_indx['Energy Added Backup (J)']] = Parameters[1] * int(data[i, col_indx['Tank Temperature (deg C)']] < Parameters[3]) * (data[i, col_indx['Timestep (min)']] * Seconds_In_Minute)
+            data[i, col_indx['Energy Added Backup (J)']] = Parameters[1] * int(data[i, 
+                col_indx['Tank Temperature (deg C)']] < Parameters[3]) * (data[i, 
+                col_indx['Timestep (min)']] * Seconds_In_Minute)
         # 3- Calculate the energy withdrawn by the occupants using hot water:
-        data[i, col_indx['Energy Withdrawn (J)']] = -data[i, col_indx['Hot Water Draw Volume (L)']] * Density_Water * SpecificHeat_Water * (data[i, col_indx['Tank Temperature (deg C)']] - data[i, col_indx['Inlet Water Temperature (deg C)']])
+        data[i, col_indx['Energy Withdrawn (J)']] = -data[i, col_indx['Hot Water Draw Volume (L)']] * \
+            Density_Water * SpecificHeat_Water * (data[i, col_indx['Tank Temperature (deg C)']] - \
+            data[i, col_indx['Inlet Water Temperature (deg C)']])
         # 4 - Calculate the energy added by the heat pump during the previous timestep
         
-        data[i, col_indx['Energy Added Heat Pump (J)']] = (
-                Parameters[4]
-                * int(data[i, col_indx['Tank Temperature (deg C)']] < (data[i, col_indx['Set Temperature (deg C)']] - Parameters[6]) or data[i-1, col_indx['Energy Added Heat Pump (J)']] > 0 and data[i, col_indx['Tank Temperature (deg C)']] < data[i, col_indx['Set Temperature (deg C)']])
-                * (data[i, col_indx['Timestep (min)']] * Seconds_In_Minute)
-                )
+        data[i, col_indx['Energy Added Heat Pump (J)']] = (Parameters[4] * \
+            int(data[i, col_indx['Tank Temperature (deg C)']] < (data[i, \
+            col_indx['Set Temperature (deg C)']] - Parameters[6]) or data[i-1, \
+            col_indx['Energy Added Heat Pump (J)']] > 0 and data[i, col_indx['Tank Temperature (deg C)']] \
+            < data[i, col_indx['Set Temperature (deg C)']]) * (data[i, col_indx['Timestep (min)']] * \
+            Seconds_In_Minute))
         # 5 - Calculate the energy change in the tank during the previous timestep
-        data[i, col_indx['Total Energy Change (J)']] = data[i, col_indx['Jacket Losses (J)']] + data[i, col_indx['Energy Withdrawn (J)']] + data[i, col_indx['Energy Added Backup (J)']] + data[i, col_indx['Energy Added Heat Pump (J)']]        
+        data[i, col_indx['Total Energy Change (J)']] = data[i, col_indx['Jacket Losses (J)']] + \
+            data[i, col_indx['Energy Withdrawn (J)']] + data[i, col_indx['Energy Added Backup (J)']] + \
+            data[i, col_indx['Energy Added Heat Pump (J)']]        
 #        data[i, col_indx['Electricity CO2 Multiplier (lb/kWh)']] = Parameters[10][data[i, col_indx['Hour of Year (hr)']]]
         # 6 - #Calculate the tank temperature during the final time step
         if i < len(data) - 1:
-            data[i + 1, col_indx['Tank Temperature (deg C)']] = data[i, col_indx['Total Energy Change (J)']] / Parameters[7] + data[i, col_indx['Tank Temperature (deg C)']]
+            data[i + 1, col_indx['Tank Temperature (deg C)']] = data[i, col_indx['Total Energy Change (J)']] / \
+                Parameters[7] + data[i, col_indx['Tank Temperature (deg C)']]
             
     Model = pd.DataFrame(data=data[0:,0:],index=Model.index,columns=Model.columns) #convert Numpy Array back to a Dataframe to make it more user friendly
     
-    Model['COP Adjust Tamb'] = Regression_COP_Derate_Tamb(Model['Tank Temperature (deg C)']) * (Model['Ambient Temperature (deg C)'] - Parameters[11])
+    Model['COP Adjust Tamb'] = Regression_COP_Derate_Tamb(Model['Tank Temperature (deg C)']) * \
+        (Model['Ambient Temperature (deg C)'] - Parameters[11])
     Model['COP'] = Regression_COP(1.8 * Model['Tank Temperature (deg C)'] + 32) + Model['COP Adjust Tamb']
-    Model['Electric Power (W)'] = np.where(Model['Timestep (min)'] > 0, (Model['Energy Added Heat Pump (J)']) / (Model['Timestep (min)'] * Seconds_In_Minute), 0)/Model['COP'] + np.where(Model['Timestep (min)'] > 0, Model['Energy Added Backup (J)']/(Model['Timestep (min)'] * Seconds_In_Minute), 0)
-    Model['Electricity Consumed (kWh)'] = (Model['Electric Power (W)'] * Model['Timestep (min)']) / (Watts_In_kiloWatt * Minutes_In_Hour)
+    Model['Electric Power (W)'] = np.where(Model['Timestep (min)'] > 0, (Model['Energy Added Heat Pump (J)']) / \
+         (Model['Timestep (min)'] * Seconds_In_Minute), 0)/Model['COP'] + np.where(Model['Timestep (min)'] > 0, \
+         Model['Energy Added Backup (J)']/(Model['Timestep (min)'] * Seconds_In_Minute), 0)
+    Model['Electricity Consumed (kWh)'] = (Model['Electric Power (W)'] * Model['Timestep (min)']) / \
+        (Watts_In_kiloWatt * Minutes_In_Hour)
     Model['Energy Added Total (J)'] = Model['Energy Added Heat Pump (J)'] + Model['Energy Added Backup (J)'] #Calculate the total energy added to the tank during this timestep
     
     return Model    

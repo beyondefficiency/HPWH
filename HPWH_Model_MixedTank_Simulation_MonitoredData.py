@@ -56,8 +56,11 @@ from linetimer import CodeTimer
 #These inputs are a series of constants describing the conditions of the simulation. Many of them are overwritten with measurements
 #if Compare_To_MeasuredData = 1. The constants describing the gas HPWH itself come from communications with Alex of GTI, and may
 #need to be updated if he sends new values
+Temperature_Tank_Set = {'0': 48.9, '1': 48.9, '2': 48.9, '3': 48.9, '4': 48.9, '5': 48.9, '6': 48.9,
+                        '7': 48.9, '8': 48.9, '9': 48.9, '10': 60, '11': 60, '12': 60, '13': 60,
+                        '14': 60, '15': 60, '16': 48.9, '17': 48.9, '18': 48.9, '19': 48.9, '20': 48.9,
+                        '21': 48.9, '22': 48.9, '23': 48.9} #deg C, set temperature of the HPWH each hour of the day
 Temperature_Tank_Initial = 50.5 #deg C, initial temperature of water in the storage tank (120 F is the current default)
-Temperature_Tank_Set = 50.5 #deg C, set temperature of the HPWH (120 F is the current default)
 Temperature_Tank_Set_Deadband = 3.5 #deg C, deadband on the thermostat (20 F is the default)
 Temperature_Water_Inlet = 4.4 #deg C, inlet water temperature in this simulation (40 F is the default)
 Temperature_Ambient = 20 #deg C, temperature of the ambient air, placeholder for now, 68 F is the default
@@ -73,23 +76,27 @@ CO2_Output_Electricity = 0.212115 #ton/MWh, CO2 production when the HPWH consume
 Coefficient_2ndOrder_COP = 0 #The 2nd order coefficient in the COP equation
 Coefficient_1stOrder_COP = -0.037 #The 1st order coefficient in the COP equation
 Constant_COP = 7.67 #The constant in the COP equation
-Temperature_MixingValve_Set = 48.9 #deg C, set temperature of the mixing valve
 Coefficient_2ndOrder_COP_Adjust_Tamb = 0.000055 # The 2nd order coefficient in the COP derate for ambient temperature equation
 Coefficient_1stOrder_COP_Adjust_Tamb = -0.0077 # The 2nd order coefficient in the COP derate for ambient temperature equation
 Constant_COP_Adjust_Tamb = 0.2874 # The 2nd order coefficient in the COP derate for ambient temperature equation
 COP_Adjust_Reference_Temperature = 19.7222 # The ambient temperature that the COP coefficients represent
+Temperature_MixingValve_Set = 48.9 #deg C, set temperature of the mixing valve
 
 #%%--------------------------INPUTS-------------------------------------------
 
 #This first variable provides the path to the data set itself. This means you should fill in the path with the specific location 
 #of your data file. Note that this works best if the file is on your hard drive, not a shared network drive
-Path_DrawProfile = r'C:\Users\Peter Grant\Dropbox (Beyond Efficiency)\Peter\Python Scripts\HPWH_Python\Data\MonitoredData\3CFA_LoadShifting_Aug2020' + os.sep +  'Aug20_To_Aug26.csv'
+cwd = os.getcwd()
+Path_DrawProfile = cwd + r'\Input\2020-05-31_P30104_3CFA.csv'
 #Reads the conditions of the data set (e.g. HPWHName + Dates) and stores it in FileName to create a final filename for use when saving the data set
 Filename_Start = -18
 Filename_End = -4
 Filename = Path_DrawProfile[Filename_Start:Filename_End] #Create a filename consisting the symbols between Filename_Start and FilenameEnd
 
-Variable_Set_Temperature = 1 #Set this =1 if using a varying set temperature for the water heater, or =0 if using a static set temperature for the water heater
+# Select the model for the set temperature
+# Monitored reads it from monitored data
+# Simulated reads it from the dictionary specified above
+Set_Temperature_Model = 'Simulated'
 
 #Set this = 1 if you want to compare model predictions to measured data results. This is useful for model validation and error
 #checking. If you want to only input the draw profile and see what the data predicts, set this = 0. Note that =1 mode causes the
@@ -146,12 +153,20 @@ Parameters = [Coefficient_JacketLoss, #0
 Coefficients_COP = [Coefficient_2ndOrder_COP, Coefficient_1stOrder_COP, Constant_COP] #combines the coefficient and the constant into an array
 Regression_COP = np.poly1d(Coefficients_COP) #Creates a 1-d linear regression stating the COP of the heat pump as a function of the temperature of water in the tank
 
-Coefficients_COP_Derate_Tamb = [Coefficient_2ndOrder_COP_Adjust_Tamb, Coefficient_1stOrder_COP_Adjust_Tamb, Constant_COP_Adjust_Tamb] #combines the coefficient and the constant into an array
+Coefficients_COP_Derate_Tamb = [Coefficient_2ndOrder_COP_Adjust_Tamb, Coefficient_1stOrder_COP_Adjust_Tamb, 
+                                Constant_COP_Adjust_Tamb] #combines the coefficient and the constant into an array
 Regression_COP_Derate_Tamb = np.poly1d(Coefficients_COP_Derate_Tamb) #Creates a 1-d linear regression stating the COP of the heat pump as a function of the temperature of water in the tank
 
-Draw_Profile = pd.read_csv(Path_DrawProfile) #Reads the input data, setting the first row (measurement name) of the .csv file as the header
+Draw_Profile = pd.read_csv(Path_DrawProfile, index_col = 0) #Reads the input data, setting the first row (measurement name) of the .csv file as the header
+Draw_Profile['Timestamp'] = Draw_Profile.index
+Draw_Profile.index = pd.to_datetime(Draw_Profile.index)
+Draw_Profile['Time (s)'] = (Draw_Profile.index - Draw_Profile.index[0]).total_seconds()
+Draw_Profile['Time (min)'] = Draw_Profile['Time (s)'] / 60.
 
-Model = Draw_Profile[['Timestamp', 'Time (s)', 'Time (min)', 'Power_PowerSum_W', 'Power_EnergySum_kWh', 'Water_FlowRate_gpm', 'Water_FlowTotal_gal', 'Water_FlowTemp_F', 'Water_RemoteTemp_F', 'T_Setpoint_F', 'T_Ambient_EcoNet_F', 'T_Cabinet_F', 'T_TankUpper_F', 'T_TankLower_F']].copy() #Creates a new dataframe with the same index as DrawProfile, keeping only the needed columns. NOTE: THIS CURRENTLY DOES NOT KEEP ALL NEEDED COLUMNS. WILL NEED TO MODIFY TO INCLUDE INLET TEMPERATURE, CLOSET AIR TEMPERATURE, CLOSET RELATIVE HUMIDITY WHEN THOSE COLUMNS ARE AVILABLE AND IDENTIFIED
+Model = Draw_Profile[['Timestamp', 'Time (s)', 'Time (min)', 'Power_PowerSum_W', 'Power_EnergySum_kWh', 
+                      'Water_FlowRate_gpm', 'Water_FlowTotal_gal', 'Water_FlowTemp_F', 'Water_RemoteTemp_F', 
+                      'T_Setpoint_F', 'T_Ambient_EcoNet_F', 'T_Cabinet_F', 'T_TankUpper_F', 'T_TankLower_F',
+                      ]].copy() #Creates a new dataframe with the same index as DrawProfile, keeping only the needed columns. NOTE: THIS CURRENTLY DOES NOT KEEP ALL NEEDED COLUMNS. WILL NEED TO MODIFY TO INCLUDE INLET TEMPERATURE, CLOSET AIR TEMPERATURE, CLOSET RELATIVE HUMIDITY WHEN THOSE COLUMNS ARE AVILABLE AND IDENTIFIED
 Model = Model.fillna(method='ffill') #Fills empty cells by projecting the most recent reading forward to the next reading
 Model = Model.fillna(method='bfill') #Fills empty cells by copying the following reading into these cells. Note that this only happens for cells at the start of the data set because all other cells were filled by the previous line
 #Model = Model.drop([0, 1]) #This line removes the first x (As defined by user) lines of code from the dataframe. It can be used if there are issues with the first few rows
@@ -184,9 +199,15 @@ Model['T_Ambient_EcoNet_C'] = (Model['T_Ambient_EcoNet_F']-32) * 1/K_To_F_Magnit
 Model['T_Cabinet_C'] = (Model['T_Cabinet_F']-32) * 1/K_To_F_MagnitudeOnly #Creates a new column representing the air temperature in the cabinet, converted from F to C
 Model['T_Tank_Upper_C'] = (Model['T_TankUpper_F']-32) * 1/K_To_F_MagnitudeOnly #Creates a new column representing the water temperature reported by the upper thermostat in the tank, converted from F to C
 Model['T_Tank_Lower_C'] = (Model['T_TankLower_F']-32) * 1/K_To_F_MagnitudeOnly #Creates a new column representing the water temperature reported by the lower thermostat in the tank, converted from F to C
+Model['Timestamp'] = pd.to_datetime(Model['Timestamp'])
+for i in Model.index:
+    Model.loc[i, 'Hour'] = Model.loc[i, 'Timestamp'].hour
+Model['Hour'] = Model['Hour'].astype(int)
 
-if Variable_Set_Temperature == 0: #If the user has opted to use a static set temperature
-    Model['Set Temperature (deg C)'] = Temperature_Tank_Set #Make the set temperature at all times equal the static set temperature specified by the user
+
+if Set_Temperature_Model == 'Simulated': #If the user has opted to use an assumed set temperature
+    Model['Hour'] = Model['Hour'].astype(str)
+    Model['Set Temperature (deg C)'] = Model['Hour'].map(Temperature_Tank_Set)
 
 Model['T_Activation_Backup_C'] = Model['Set Temperature (deg C)'] - Threshold_Activation_Backup #Set the activation temperature for the backup resistance element equal to the set temperature minus an additional delta before the resistance element engages
 
@@ -220,15 +241,20 @@ Model['Inlet Water Temperature (deg C)'] = Model['Water_RemoteTemp_C'] #Set the 
 Model['Water_FlowTotal_L shifted'] = Model['Water_FlowTotal_L'].shift(1)
 Model['Water_FlowTotal_L shifted'].iloc[0] = Model['Water_FlowTotal_L'].iloc[0]
 Model['Water Draw Volume (L)'] =  Model['Water_FlowTotal_L'] - Model['Water_FlowTotal_L shifted']
-Model['Hot Water Draw Volume (L)'] = (Model['Water Draw Volume (L)'] * Model['Water_RemoteTemp_C'] - Model['Water Draw Volume (L)'] * Temperature_MixingValve_Set) / (Model['Water_RemoteTemp_C'] - Model['T_Tank_Upper_C'])
+Model['Hot Water Draw Volume (L)'] = (Model['Water Draw Volume (L)'] * Model['Water_RemoteTemp_C'] - 
+     Model['Water Draw Volume (L)'] * Temperature_MixingValve_Set) / (Model['Water_RemoteTemp_C'] - 
+     Model['T_Tank_Upper_C'])
 
-Model = HPWH.Model_HPWH_MixedTank(Model, Parameters, Regression_COP) #Passes the data to the mixed tank HPWH simulation model
+Model = HPWH.Model_HPWH_MixedTank(Model, Parameters, Regression_COP, Regression_COP_Derate_Tamb) #Passes the data to the mixed tank HPWH simulation model
+
+Model['Timestamp'] = pd.to_datetime(Model['Timestamp'])
+Model = Model.set_index('Timestamp')
 
 Simulation_End = time.time() #Identify the time at the end of the simulation
 
 print ('Simulation time is ' + str(Simulation_End - Simulation_Start)) #Print the total time elapsed during the simulation for diagnostic purposes
 
-Model.to_csv(os.path.dirname(__file__) + os.sep + 'Output' + os.sep + 'Output_' + Filename + '.csv', index = False) #Save the model too the declared file. This should probably be replaced with a dynamic file name for later use in parametric simulations
+Model.to_csv(os.path.dirname(__file__) + os.sep + 'Output' + os.sep + 'Output_' + Filename + '.csv') #Save the model too the declared file. This should probably be replaced with a dynamic file name for later use in parametric simulations
 
 #%%--------------------------MODEL COMPARISON-----------------------------------------
 
@@ -236,7 +262,8 @@ Model.to_csv(os.path.dirname(__file__) + os.sep + 'Output' + os.sep + 'Output_' 
 if Compare_To_MeasuredData == 1:
     #Calculate the electricity consumed over the simulation and the % error for validation purposes
     Model['Total Electricity Consumption (kWh)'] = Model['Electricity Consumed (kWh)'].cumsum()
-    Model['Cumulative Percent Error (%)'] = (Model['Total Electricity Consumption (kWh)'] - Model['Power_EnergySum_kWh']) / (Model['Power_EnergySum_kWh'] + 0.000000000001) * 100
+    Model['Cumulative Percent Error (%)'] = (Model['Total Electricity Consumption (kWh)'] - 
+         Model['Power_EnergySum_kWh']) / (Model['Power_EnergySum_kWh'] + 0.000000000001) * 100
     
     tools = [LassoSelectTool(), WheelZoomTool(), BoxZoomTool(), ResetTool()]    
     
@@ -253,17 +280,22 @@ if Compare_To_MeasuredData == 1:
     p1.xaxis.major_label_text_font_size = '12pt'
     p1.yaxis.major_label_text_font_size = '12pt'
 
-    p2 = figure(width=1200, height= 600, x_axis_label='Time (hr)', y_axis_label = 'Cumulative Electricity Consumption (kWh)', tools = tools)
+    p2 = figure(width=1200, height= 600, x_axis_label='Time (hr)', y_axis_label = 
+                'Cumulative Electricity Consumption (kWh)', tools = tools)
     p2.title.text_font_size = '12pt'
-    p2.line(x = Model['Time (hr)'], y = Model['Total Electricity Consumption (kWh)'], legend = 'Model', color = 'red')
+    p2.line(x = Model['Time (hr)'], y = Model['Total Electricity Consumption (kWh)'], legend = 'Model', 
+                      color = 'red')
     p2.circle(x = Model['Time (hr)'], y = Model['Power_EnergySum_kWh'], legend = 'Data', color = 'blue')    
 
-    p3 = figure(width=1200, height= 600, x_axis_label='Time (hr)', y_axis_label = 'Water Temperature (deg C)', tools = tools)
+    p3 = figure(width=1200, height= 600, x_axis_label='Time (hr)', y_axis_label = 'Water Temperature (deg C)', 
+                tools = tools)
     p3.title.text_font_size = '12pt'
-    p3.line(x = Model['Time (hr)'], y = Model['Tank Temperature (deg C)'], legend = 'Model, Tank Average', color = 'red')
+    p3.line(x = Model['Time (hr)'], y = Model['Tank Temperature (deg C)'], legend = 'Model, Tank Average', 
+                      color = 'red')
     p3.circle(x = Model['Time (hr)'], y = Model['T_Tank_Upper_C'], legend = 'Data, Upper', color = 'blue') 
     p3.circle(x = Model['Time (hr)'], y = Model['T_Tank_Lower_C'], legend = 'Data, Lower', color = 'purple') 
-    p3.circle(x = Model['Time (hr)'], y = Model['Set Temperature (deg C)'], legend = 'Set Temperature', color = 'orange')
+    p3.circle(x = Model['Time (hr)'], y = Model['Set Temperature (deg C)'], legend = 'Set Temperature', 
+                        color = 'orange')
     p3.legend.label_text_font_size = '18pt'
     p3.legend.location = 'bottom_right'
     p3.xaxis.axis_label_text_font_size = '18pt'
@@ -271,33 +303,45 @@ if Compare_To_MeasuredData == 1:
     p3.xaxis.major_label_text_font_size = '12pt'
     p3.yaxis.major_label_text_font_size = '12pt'    
 
-    p4 = figure(width=1200, height= 600, x_axis_label='Time (hr)', y_axis_label = 'Cumulative Water Consumption (L)', tools = tools)
+    p4 = figure(width=1200, height= 600, x_axis_label='Time (hr)', y_axis_label = 
+                'Cumulative Water Consumption (L)', tools = tools)
     p4.title.text_font_size = '12pt'
     p4.circle(x = Model['Time (hr)'], y = Model['Water_FlowTotal_L'], legend = 'Water', color = 'blue') 
 
-    p5 = figure(width=1200, height= 600, x_axis_label='Time (hr)', y_axis_label = 'Water Consumption Each Timestep (L)', tools = tools)
+    p5 = figure(width=1200, height= 600, x_axis_label='Time (hr)', y_axis_label = 
+                'Water Consumption Each Timestep (L)', tools = tools)
     p5.title.text_font_size = '12pt'
     p5.circle(x = Model['Time (hr)'], y = Model['Water Draw Volume (L)'], legend = 'From MV', color = 'blue') 
-    p5.circle(x = Model['Time (hr)'], y = Model['Hot Water Draw Volume (L)'], legend = 'From WH - Calculated', color = 'red') 
+    p5.circle(x = Model['Time (hr)'], y = Model['Hot Water Draw Volume (L)'], legend = 
+                        'From WH - Calculated', color = 'red') 
 
-    p6 = figure(width=1200, height= 600, x_axis_label='Time (hr)', y_axis_label = 'Water Temperatures (deg C)', tools = tools)
+    p6 = figure(width=1200, height= 600, x_axis_label='Time (hr)', y_axis_label = 
+                'Water Temperatures (deg C)', tools = tools)
     p6.title.text_font_size = '12pt'
     p6.circle(x = Model['Time (hr)'], y = Model['T_Tank_Upper_C'], legend = 'T_Tank_Upper_C', color = 'red') 
-    p6.circle(x = Model['Time (hr)'], y = Model['Water_FlowTemp_C'], legend = 'Water_FlowTemp_C', color = 'purple') 
-    p6.circle(x = Model['Time (hr)'], y = Model['Water_RemoteTemp_C'], legend = 'Water_RemoteTemp_C', color = 'blue') 
+    p6.circle(x = Model['Time (hr)'], y = Model['Water_FlowTemp_C'], legend = 'Water_FlowTemp_C', 
+                        color = 'purple') 
+    p6.circle(x = Model['Time (hr)'], y = Model['Water_RemoteTemp_C'], legend = 'Water_RemoteTemp_C', 
+                        color = 'blue') 
 
-    p7 = figure(width=1200, height= 600, x_axis_label='Time (hr)', y_axis_label = 'Monitored Ambient Temperature (deg C)', tools = tools)
+    p7 = figure(width=1200, height= 600, x_axis_label='Time (hr)', y_axis_label = 
+                'Monitored Ambient Temperature (deg C)', tools = tools)
     p7.title.text_font_size = '12pt'
     p7.circle(x = Model['Time (hr)'], y = Model['T_Cabinet_C'], legend = 'T_Cabinet_C', color = 'blue') 
-    p7.circle(x = Model['Time (hr)'], y = Model['T_Ambient_EcoNet_C'], legend = 'T_Ambient_EcoNet_C', color = 'red') 
+    p7.circle(x = Model['Time (hr)'], y = Model['T_Ambient_EcoNet_C'], legend = 'T_Ambient_EcoNet_C', 
+                        color = 'red') 
 
-    p8 = figure(width=1200, height= 600, x_axis_label='Time (hr)', y_axis_label = 'Error in Electricity Consumption (%)', tools = tools)
+    p8 = figure(width=1200, height= 600, x_axis_label='Time (hr)', y_axis_label = 
+                'Error in Electricity Consumption (%)', tools = tools)
     p8.title.text_font_size = '12pt'
-    p8.circle(x = Model['Time (hr)'], y = Model['Cumulative Percent Error (%)'], legend = 'Error', color = 'black') 
+    p8.circle(x = Model['Time (hr)'], y = Model['Cumulative Percent Error (%)'], legend = 'Error', 
+                        color = 'black') 
 
     p = gridplot([[p1],[p2],[p3],[p4],[p5],[p6],[p7], [p8]])
     if Time_Filtering == 0:
-        output_file(os.path.dirname(__file__) + os.sep + 'Validation Data\Validation Plots_' + Filename + '.html', title = 'Validation Data')
+        output_file(os.path.dirname(__file__) + os.sep + 'Validation Data\Validation Plots_' + 
+                    Filename + '.html', title = 'Validation Data')
     elif Time_Filtering == 1:
-        output_file(os.path.dirname(__file__) + os.sep + 'Validation Data\Validation Plots_' + Filename + '_Start=' + str(Start_Time) + '_End=' + str(End_Time) + '.html', title = 'Validation Data')
+        output_file(os.path.dirname(__file__) + os.sep + 'Validation Data\Validation Plots_' + Filename + 
+                    '_Start=' + str(Start_Time) + '_End=' + str(End_Time) + '.html', title = 'Validation Data')
     save(p)
