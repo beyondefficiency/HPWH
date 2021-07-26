@@ -14,6 +14,7 @@ import time
 from linetimer import CodeTimer
 from datetime import datetime
 import HPWH_Model as HPWH
+from Set_Temperature_Profiles import get_profile
 
 ST = time.time() #begin to time the script
 
@@ -22,10 +23,9 @@ ST = time.time() #begin to time the script
 #These inputs are a series of constants describing the conditions of the simulation.
 #The constants describing the gas HPWH itself come from communications with Alex and Paul of GTI,
 #and may need to be updated if they send new values
-Temperature_Tank_Set = {'0': 48.9, '1': 48.9, '2': 48.9, '3': 48.9, '4': 48.9, '5': 48.9, '6': 48.9,
-                        '7': 48.9, '8': 48.9, '9': 48.9, '10': 60, '11': 60, '12': 60, '13': 60,
-                        '14': 60, '15': 60, '16': 48.9, '17': 48.9, '18': 48.9, '19': 48.9, '20': 48.9,
-                        '21': 48.9, '22': 48.9, '23': 48.9} #deg C, set temperature of the HPWH each hour of the day
+
+Set_Temperature_Profile = 'Static_140' #Read list of profile options in Set_Temperature_Profiles.get_profile
+Temperature_Tank_Set = get_profile(Set_Temperature_Profile)
 Temperature_Tank_Initial = 50.5 #Deg C, initial temperature of water in the storage tank. 115 F is the standard set temperature in CBECC
 Temperature_Tank_Set_Deadband = 3.5 #Deg C, deadband on the thermostat based on e-mail from Paul Glanville on Oct 31, 2019
 Temperature_Water_Inlet = 4.4 #Deg C, inlet water temperature in this simulation. Note that this value is only used if vary_inlet_temp = False
@@ -67,6 +67,7 @@ Peak_End = 12 + 9 #hr, represents the start time of the peak period. The default
 
 vary_inlet_temp = True # enter False to fix inlet water temperature constant, and True to take the inlet water temperature from the draw profile file (to make it vary by climate zone)
 Vary_CO2_Elec = False #Enter True is reading the CO2 multipliers from a data file, enter False if using the CO2 multiplier specified above
+Shift_On_Weekends = True # True if applying load shifting controls on the weekends, False if only applying load shifting on week days
 
 Path_DrawProfile = r'C:\Users\Peter Grant\Dropbox (Beyond Efficiency)\Peter\Python Scripts\GasHPWH_Model_git\Data\Draw_Profiles\Bldg=Single_CZ=1_Wat=Hot_Prof=1_SDLM=Yes_CFA=800_Inc=FSCDB_Ver=2019.csv'
 Filename = Path_DrawProfile.split('Draw_Profiles\\')[1]
@@ -120,16 +121,11 @@ ThermalMass_Tank = Volume_Tank * Density_Water * SpecificHeat_Water
 #Stores the parameters describing the HPWH in a list for use in the model
 Parameters = [Coefficient_JacketLoss, #0
                 Power_Backup, #1
-                Threshold_Activation_Backup, #2
-                Threshold_Deactivation_Backup, #3
-                HeatAddition_HeatPump, #4
-                Temperature_Tank_Set, #5
-                Temperature_Tank_Set_Deadband, #6
-                ThermalMass_Tank, #7
-                ElectricityConsumption_Active, #8
-                ElectricityConsumption_Idle, #9
-                CO2_Production_Rate_Electricity, #10
-                COP_Adjust_Reference_Temperature] #11
+                HeatAddition_HeatPump, #2
+                Temperature_Tank_Set_Deadband, #3
+                ThermalMass_Tank, #4
+                CO2_Production_Rate_Electricity, #5
+                COP_Adjust_Reference_Temperature] #6
 
 #%%--------------------------MODELING-----------------------------------------
 
@@ -235,11 +231,17 @@ Model['Total Energy Change (J)'] = 0
 Model['Timestep (min)'] = Timestep
 Model['Hour of Year (hr)'] = (Model['Time (min)']/60).astype(int)
 Model['Electricity CO2 Multiplier (lb/kWh)'] = 0
+
 Model['Time Elapsed (timedelta)'] = pd.to_timedelta(Model['Time (min)'], unit = 'm')
 Model['Timestamp'] = Model['Time Elapsed (timedelta)'] + Simulation_Start
 Model['Hour'] = pd.DatetimeIndex(Model['Timestamp']).hour
+Model['Weekday?'] = Model['Timestamp'].dt.weekday
+Model['Weekday?'] = Model['Weekday?'] < 5
+
 Model['Hour'] = Model['Hour'].astype(str)
 Model['Set Temperature (deg C)'] = Model['Hour'].map(Temperature_Tank_Set)
+if Shift_On_Weekends == False:
+    Model.loc[Model['Weekday?'] == False, 'Set Temperature (deg C)'] = Temperature_Tank_Set['0']
 
 Model['Temperature Activation Backup (deg C)'] = Model['Set Temperature (deg C)'] - Threshold_Activation_Backup #Set the activation temperature for the backup resistance element equal to the set temperature minus an additional delta before the resistance element engages
 
@@ -256,4 +258,4 @@ print('Simulating took {} seconds.'.format(end_simulation - end_initialization))
 Model.to_csv(Path_Output, index = False) #Save the model to the declared file.
 
 ET = time.time() #begin to time the script
-print('script ran in {0} seconds'.format((ET - ST)))
+print('Saving results took {0} seconds'.format((ET - end_simulation)))
