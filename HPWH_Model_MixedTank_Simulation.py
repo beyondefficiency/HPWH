@@ -9,22 +9,19 @@ Created on Mon Apr 01 12:53:33 2019
 import pandas as pd
 import numpy as np
 import os
-import sys
 import time
-from linetimer import CodeTimer
 from datetime import datetime
 import HPWH_Model as HPWH
 from Set_Temperature_Profiles import get_profile
+from Installation_Configuration import get_temperatures
 
 ST = time.time() #begin to time the script
 
 #%%--------------------------HPWH PARAMETERS------------------------------
 
 #These inputs are a series of constants describing the conditions of the simulation.
-#The constants describing the gas HPWH itself come from communications with Alex and Paul of GTI,
-#and may need to be updated if they send new values
 
-Set_Temperature_Profile = 'Static_140' #Read list of profile options in Set_Temperature_Profiles.get_profile
+Set_Temperature_Profile = 'Static_60' #Read list of profile options in Set_Temperature_Profiles.get_profile
 Temperature_Tank_Set = get_profile(Set_Temperature_Profile)
 Temperature_Tank_Initial = 50.5 #Deg C, initial temperature of water in the storage tank. 115 F is the standard set temperature in CBECC
 Temperature_Tank_Set_Deadband = 3.5 #Deg C, deadband on the thermostat based on e-mail from Paul Glanville on Oct 31, 2019
@@ -34,6 +31,7 @@ Volume_Tank = 290 #L, volume of water held in the storage tank
 Coefficient_JacketLoss = 2.8 #W/K, Default value matches the Rheem PROPH80
 Power_Backup = 3800 #W, electricity consumption of the backup resistance elements
 Threshold_Activation_Backup = 15 #deg C, backup element operates when tank temperature is this far below the set temperature. This parameter operates as a deadband. Note that this operate at the same time as the heat pump (100 F is the default)
+Cutoff_Temperature = 2.8 #deg C, the temperature below which the heat pump no longer operates
 Threshold_Deactivation_Backup = Temperature_Tank_Set #Deg C, sets the temperature when the backup element disengages after it has been engaged
 HeatAddition_HeatPump = 1230.9 #W, heat consumed by the heat pump
 ElectricityConsumption_Active = 158.5 #W, electricity consumed by the fan when the heat pump is running
@@ -46,6 +44,7 @@ Coefficient_2ndOrder_COP_Adjust_Tamb = 0.000055 # The 2nd order coefficient in t
 Coefficient_1stOrder_COP_Adjust_Tamb = -0.0077 # The 2nd order coefficient in the COP adjustment for ambient temperature equation
 Constant_COP_Adjust_Tamb = 0.2874 # The 2nd order coefficient in the COP adjustment for ambient temperature equation
 COP_Adjust_Reference_Temperature = 19.7222 # The ambient temperature that the COP coefficients represent
+Installation_Configuration = 'Ducted_Exhaust'
 
 #%%--------------------------USER INPUTS------------------------------------------
 # example full draw profile file name:
@@ -125,7 +124,8 @@ Parameters = [Coefficient_JacketLoss, #0
                 Temperature_Tank_Set_Deadband, #3
                 ThermalMass_Tank, #4
                 CO2_Production_Rate_Electricity, #5
-                COP_Adjust_Reference_Temperature] #6
+                COP_Adjust_Reference_Temperature, #6
+                Cutoff_Temperature] #7
 
 #%%--------------------------MODELING-----------------------------------------
 
@@ -215,6 +215,7 @@ end_inlet = time.time()
 print('Calculating the varying inlet temperature took {} seconds.'.format(end_inlet - end_profile))
 
 Model['Ambient Temperature (deg C)'] = Temperature_Ambient #Sets the ambient temperature in the model equal to the value specified in INPUTS. This value could be replaced with a series of values
+Model = get_temperatures(Model, Installation_Configuration)
 
 # Initializes a bunch of values at either 0 or initial temperature. They will be overwritten later as needed
 Model['Tank Temperature (deg C)'] = 0

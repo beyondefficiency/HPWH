@@ -49,8 +49,8 @@ from bokeh.models import LassoSelectTool, WheelZoomTool, BoxZoomTool, ResetTool
 import os
 import time
 import HPWH_Model as HPWH
-from linetimer import CodeTimer
 from Set_Temperature_Profiles import get_profile
+from Installation_Configuration import get_temperatures
 
 #%%--------------------------HPWH PARAMETERS------------------------------
 Time_At_Start_Of_Simulation = time.time()
@@ -59,10 +59,10 @@ Time_At_Start_Of_Simulation = time.time()
 
 # Select the model for the set temperature
 # Monitored reads it from monitored data
-# Simulated reads it from the dictionary specified above
+# Simulated reads it from the dictionary specified below
 Set_Temperature_Model = 'Monitored'
 if Set_Temperature_Model == 'Simulated':
-    Set_Temperature_Profile = 'Static_140' #Read list of profile options in Set_Temperature_Profiles.get_profile
+    Set_Temperature_Profile = 'Static_60' #Read list of profile options in Set_Temperature_Profiles.get_profile
     Temperature_Tank_Set = get_profile(Set_Temperature_Profile)
 #    Threshold_Deactivation_Backup = Temperature_Tank_Set #Deg C, sets the temperature when the backup element disengages after it has been engaged (115 F is the default)
 Temperature_Tank_Initial = 50.5 #deg C, initial temperature of water in the storage tank (120 F is the current default)
@@ -73,6 +73,7 @@ Volume_Tank = 290 #L, volume of water held in the storage tank, based on 72 gal 
 Coefficient_JacketLoss = 2.8 #W/K, Adjusted to match monitored data
 Power_Backup = 3800 #W, electricity consumption of the backup resistance elements
 Threshold_Activation_Backup = 16 #deg C, backup element operates when tank temperature is this far below the set temperature. This parameter operates as a deadband. Note that this operate at the same time as the heat pump (100 F is the default)
+Cutoff_Temperature = 2.8 #deg C, the temperature below which the heat pump no longer operates
 HeatAddition_HeatPump = 1230.9 #W, heat consumed by the heat pump
 ElectricityConsumption_Active = 158.5 #W, electricity consumed by the fan when the heat pump is running
 ElectricityConsumption_Idle = 18 #W, electricity consumed by the HPWH when idle
@@ -85,13 +86,14 @@ Coefficient_1stOrder_COP_Adjust_Tamb = -0.0077 # The 2nd order coefficient in th
 Constant_COP_Adjust_Tamb = 0.2874 # The 2nd order coefficient in the COP derate for ambient temperature equation
 COP_Adjust_Reference_Temperature = 19.7222 # The ambient temperature that the COP coefficients represent
 Temperature_MixingValve_Set = 48.9 #deg C, set temperature of the mixing valve
+Installation_Configuration = 'Open_Area'
 
 #%%--------------------------INPUTS-------------------------------------------
 
 #This first variable provides the path to the data set itself. This means you should fill in the path with the specific location 
 #of your data file. Note that this works best if the file is on your hard drive, not a shared network drive
 cwd = os.getcwd()
-Path_DrawProfile = cwd + r'\Input\Creekside Data for B9AE.csv'
+Path_DrawProfile = cwd + r'\Input\Creekside Data for 3D8C.csv'
 
 Filename = Path_DrawProfile.split('Input\\')[1]
 Path_Output = os.path.dirname(__file__) + os.sep + 'Output' + os.sep + 'Output_' + Filename
@@ -147,7 +149,8 @@ Parameters = [Coefficient_JacketLoss, #0
                 Temperature_Tank_Set_Deadband, #3
                 ThermalMass_Tank, #4
                 CO2_Production_Rate_Electricity, #5
-                COP_Adjust_Reference_Temperature] #6
+                COP_Adjust_Reference_Temperature, #6
+                Cutoff_Temperature] #7
 
 Constant_Declarations = time.time()
 print('Declaring constants takes {} seconds'.format(Constant_Declarations - Reading_Inputs))
@@ -235,6 +238,8 @@ Model['COP Adjust Tamb'] = 0 # Adjustment for the COP based on how T_Amb differs
 
 #Sets the following two parameters equal to the monitored data for the entire simulation
 Model['Ambient Temperature (deg C)'] = Model['T_Cabinet_C'] #Sets ambient temperature in the simulation model equal to the monitored temperature in the cabinet
+# Identify the impacts of the installation configuration
+Model = get_temperatures(Model, Installation_Configuration)
 Model['Inlet Water Temperature (deg C)'] = Model['Water_RemoteTemp_C'] #Set the inlet water temperature in the model equal to the monitored inlet water temperature
 
 #This section calculates the volume of hot water removed from the tank during
@@ -266,10 +271,10 @@ PercentError = (Simulated - Measured) / Measured * 100
 print('Simulation time is {} seconds'.format(Simulation_End - Preparing_Inputs)) #Print the total time elapsed during the simulation for diagnostic purposes
 
 Model_Reduced = Model[['Time (s)', 'Timestep (min)', 'Set Temperature (deg C)', 'Tank Temperature (deg C)', 
-                       'Energy Withdrawn (J)', 'Energy Added Total (J)', 'Ambient Temperature (deg C)', 
+                       'Energy Withdrawn (kWh)', 'Energy Added Total (kWh)', 'Ambient Temperature (deg C)', 
                        'Inlet Water Temperature (deg C)', 'Water Draw Volume (L)', 
                        'Hot Water Draw Volume (L)', 'Electricity Consumed (kWh)',
-                       'Energy Added Backup (J)', 'Energy Added Heat Pump (J)', 'Power_PowerSum_W', 'COP',
+                       'Energy Added Backup (kWh)', 'Energy Added Heat Pump (kWh)', 'Power_PowerSum_W', 'COP',
                        'Power_EnergySum_kWh']]
 
 Model_Reduced.to_csv(Path_Output) #Save the model to the declared file

@@ -25,6 +25,7 @@ Watts_In_kiloWatt = 1000 #Conversion between W and kW
 SpecificHeat_Water = 4.190 #J/g-C
 Density_Water = 1000 #g/L
 kWh_In_Wh = 1/1000 #Conversion from Wh to kWh
+kWh_In_J = 2.7777777777e-7
 
 def Model_HPWH_MixedTank(Model, Parameters, Regression_COP, Regression_COP_Derate_Tamb):
     Coefficient_JacketLoss = Parameters[0]
@@ -34,6 +35,7 @@ def Model_HPWH_MixedTank(Model, Parameters, Regression_COP, Regression_COP_Derat
     ThermalMass_Tank = Parameters[4]
     CO2_Production_Rate_Electricity = Parameters[5] #Temporarily not used. Keep as placeholder for adding CO2 calculations
     COP_Adjust_Reference_Temperature = Parameters[6]
+    Cutoff_Temperature = Parameters[7]
 
     data = Model.to_numpy() #convert the dataframe to a numpy array for EXTREME SPEED!!!! (numpy opperates in C)
     col_indx = dict(zip(Model.columns, list(range(0,len(Model.columns))))) #create a dictionary to provide column index references while using numpy in following loop
@@ -51,6 +53,11 @@ def Model_HPWH_MixedTank(Model, Parameters, Regression_COP, Regression_COP_Derat
             - data[i,col_indx['Ambient Temperature (deg C)']]) * (data[i, col_indx['Timestep (min)']] * 
             Seconds_In_Minute)
         # 2- Calculate the energy added to the tank using the backup electric resistance element, if any:
+        # If the ambient temperature is below the cutoff temperature, use the heat pump set temperature
+        # instead of the resistance element temperature
+        if data[i, col_indx['Ambient Temperature (deg C)']] < Cutoff_Temperature:
+            data[i, col_indx['Temperature Activation Backup (deg C)']] = \
+            data[i, col_indx['Set Temperature (deg C)']] - Temperature_Tank_Set_Deadband
         if data[i-1, col_indx['Energy Added Backup (J)']] == 0:  #If the backup heating element was NOT active during the last time step, Calculate the energy added to the tank using the backup electric resistance elements
             data[i, col_indx['Energy Added Backup (J)']] = Power_Backup * \
                 int(data[i, col_indx['Tank Temperature (deg C)']] < \
@@ -65,13 +72,15 @@ def Model_HPWH_MixedTank(Model, Parameters, Regression_COP, Regression_COP_Derat
             Density_Water * SpecificHeat_Water * (data[i, col_indx['Tank Temperature (deg C)']] - \
             data[i, col_indx['Inlet Water Temperature (deg C)']])
         # 4 - Calculate the energy added by the heat pump during the previous timestep
-        
-        data[i, col_indx['Energy Added Heat Pump (J)']] = (HeatAddition_HeatPump * \
-            int(data[i, col_indx['Tank Temperature (deg C)']] < (data[i, \
-            col_indx['Set Temperature (deg C)']] - Temperature_Tank_Set_Deadband) or data[i-1, \
-            col_indx['Energy Added Heat Pump (J)']] > 0 and data[i, col_indx['Tank Temperature (deg C)']] \
-            < data[i, col_indx['Set Temperature (deg C)']]) * (data[i, col_indx['Timestep (min)']] * \
-            Seconds_In_Minute))
+        if data[i, col_indx['Ambient Temperature (deg C)']] < Cutoff_Temperature:
+            data[i, col_indx['Energy Added Heat Pump (J)']] = 0
+        else:
+            data[i, col_indx['Energy Added Heat Pump (J)']] = (HeatAddition_HeatPump * \
+                int(data[i, col_indx['Tank Temperature (deg C)']] < (data[i, \
+                col_indx['Set Temperature (deg C)']] - Temperature_Tank_Set_Deadband) or data[i-1, \
+                col_indx['Energy Added Heat Pump (J)']] > 0 and data[i, col_indx['Tank Temperature (deg C)']] \
+                < data[i, col_indx['Set Temperature (deg C)']]) * (data[i, col_indx['Timestep (min)']] * \
+                Seconds_In_Minute))
         # 5 - Calculate the energy change in the tank during the previous timestep
         data[i, col_indx['Total Energy Change (J)']] = data[i, col_indx['Jacket Losses (J)']] + \
             data[i, col_indx['Energy Withdrawn (J)']] + data[i, col_indx['Energy Added Backup (J)']] + \
@@ -85,7 +94,7 @@ def Model_HPWH_MixedTank(Model, Parameters, Regression_COP, Regression_COP_Derat
     Model = pd.DataFrame(data=data[0:,0:],index=Model.index,columns=Model.columns) #convert Numpy Array back to a Dataframe to make it more user friendly
     
     Model['COP Adjust Tamb'] = Regression_COP_Derate_Tamb(Model['Tank Temperature (deg C)']) * \
-        (Model['Ambient Temperature (deg C)'] - COP_Adjust_Reference_Temperature)
+        (Model['Air Inlet Temperature (deg C)'] - COP_Adjust_Reference_Temperature)
     Model['COP'] = Regression_COP(1.8 * Model['Tank Temperature (deg C)'] + 32) + Model['COP Adjust Tamb']
     Model['Electric Power (W)'] = np.where(Model['Timestep (min)'] > 0, (Model['Energy Added Heat Pump (J)']) / \
          (Model['Timestep (min)'] * Seconds_In_Minute), 0)/Model['COP'] + np.where(Model['Timestep (min)'] > 0, \
@@ -93,5 +102,18 @@ def Model_HPWH_MixedTank(Model, Parameters, Regression_COP, Regression_COP_Derat
     Model['Electricity Consumed (kWh)'] = (Model['Electric Power (W)'] * Model['Timestep (min)']) / \
         (Watts_In_kiloWatt * Minutes_In_Hour)
     Model['Energy Added Total (J)'] = Model['Energy Added Heat Pump (J)'] + Model['Energy Added Backup (J)'] #Calculate the total energy added to the tank during this timestep
+    Model['Jacket Losses (J)'] = Model['Jacket Losses (J)'] * kWh_In_J
+    Model['Energy Added Backup (J)'] = Model['Energy Added Backup (J)'] * kWh_In_J
+    Model['Energy Added Heat Pump (J)'] = Model['Energy Added Heat Pump (J)'] * kWh_In_J
+    Model['Energy Added Total (J)'] = Model['Energy Added Total (J)'] * kWh_In_J
+    Model['Energy Withdrawn (J)'] = Model['Energy Withdrawn (J)'] * kWh_In_J
+    Model['Total Energy Change (J)'] = Model['Total Energy Change (J)'] * kWh_In_J
+    Model = Model.rename(columns={'Energy Added Total (J)': 'Enery Added Total (kWh)',
+                                  'Jacket Losses (J)': 'Jacket Losses (kWh)',
+                                  'Energy Added Backup (J)': 'Energy Added Backup (kWh)',
+                                  'Energy Added Heat Pump (J)': 'Energy Added Heat Pump (kWh)',
+                                  'Energy Added Total (J)': 'Energy Added Total (kWh)',
+                                  'Energy Withdrawn (J)': 'Energy Withdrawn (kWh)',
+                                  'Total Energy Change (J)': 'Total Energy Change (kWh)'})
     
     return Model    
